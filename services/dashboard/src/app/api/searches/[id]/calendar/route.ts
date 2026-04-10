@@ -1,5 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@flight-hunter/shared';
+
+interface DayRow {
+  date: Date;
+  min_price: string | number;
+  result_count: bigint | number;
+  currency: string;
+}
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -28,58 +36,46 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const rangeStart = new Date(Math.max(monthStart.getTime(), search.departureFrom.getTime()));
     const rangeEnd = new Date(Math.min(monthEnd.getTime(), search.departureTo.getTime()));
 
+    const monthLabel = monthParam ?? `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}`;
+
     if (rangeStart > rangeEnd) {
-      const month = monthParam ?? `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}`;
-      return NextResponse.json({ month, days: [] });
+      return NextResponse.json({ month: monthLabel, days: [] });
     }
 
-    // Aggregate min price per departure day
-    const results = await prisma.flightResult.findMany({
-      where: {
-        searchId: id,
-        suspicious: false,
-        outbound: {
-          path: ['departure', 'time'],
-          gte: rangeStart.toISOString(),
-          lte: new Date(rangeEnd.getTime() + 24 * 60 * 60 * 1000 - 1).toISOString(),
-        },
-      } as any,
-      select: {
-        outbound: true,
-        pricePerPerson: true,
-        currency: true,
-      },
+    // SQL aggregation: group by departure day, return min price per day.
+    // outbound is JSONB; departure.time is an ISO timestamp string we cast to date.
+    const startDate = rangeStart.toISOString().slice(0, 10);
+    const endDate = rangeEnd.toISOString().slice(0, 10);
+
+    const rows = await prisma.$queryRaw<DayRow[]>(
+      Prisma.sql`
+        SELECT
+          (outbound->'departure'->>'time')::date AS date,
+          MIN(price_per_person) AS min_price,
+          COUNT(*) AS result_count,
+          (ARRAY_AGG(currency))[1] AS currency
+        FROM flight_results
+        WHERE search_id = ${id}::uuid
+          AND suspicious = false
+          AND (outbound->'departure'->>'time')::date BETWEEN ${startDate}::date AND ${endDate}::date
+        GROUP BY (outbound->'departure'->>'time')::date
+        ORDER BY date
+      `,
+    );
+
+    const days = rows.map((r) => {
+      const dateStr = r.date instanceof Date ? r.date.toISOString().slice(0, 10) : String(r.date).slice(0, 10);
+      return {
+        date: dateStr,
+        minPrice: Number(r.min_price),
+        currency: r.currency,
+        resultCount: Number(r.result_count),
+      };
     });
 
-    // Group by date
-    const dayMap: Record<string, { prices: number[]; currency: string }> = {};
-
-    for (const r of results) {
-      const outbound = r.outbound as any;
-      const departureTime = outbound?.departure?.time;
-      if (!departureTime) continue;
-      const date = departureTime.slice(0, 10);
-      if (!dayMap[date]) dayMap[date] = { prices: [], currency: r.currency };
-      dayMap[date].prices.push(Number(r.pricePerPerson));
-    }
-
-    const days = Object.entries(dayMap)
-      .filter(([date]) => {
-        const d = new Date(date);
-        return d >= rangeStart && d <= rangeEnd;
-      })
-      .map(([date, { prices, currency }]) => ({
-        date,
-        minPrice: Math.min(...prices),
-        currency,
-        resultCount: prices.length,
-      }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-
-    const month = monthParam ?? `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}`;
-
-    return NextResponse.json({ month, days });
-  } catch {
+    return NextResponse.json({ month: monthLabel, days });
+  } catch (err) {
+    console.error('GET /api/searches/[id]/calendar error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
