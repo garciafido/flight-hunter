@@ -48,6 +48,17 @@ function makePrismaMock() {
   return {
     flightResult: {
       create: vi.fn().mockResolvedValue({ id: 'result-uuid-1' }),
+      aggregate: vi.fn().mockResolvedValue({
+        _min: { pricePerPerson: null, score: null },
+        _max: { pricePerPerson: null },
+        _avg: { pricePerPerson: null },
+        _count: { id: 0 },
+      }),
+    },
+    priceHistory: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: 'ph-1' }),
+      update: vi.fn().mockResolvedValue({ id: 'ph-1' }),
     },
   } as unknown as PrismaClient;
 }
@@ -245,5 +256,28 @@ describe('Publisher', () => {
 
     const data = vi.mocked(prisma.flightResult.create).mock.calls[0][0].data;
     expect(data.alertLevel).toBeUndefined();
+  });
+
+  it('logs error and does not throw when price aggregation fails', async () => {
+    (prisma.flightResult.aggregate as any).mockRejectedValueOnce(new Error('db error'));
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // Let the fire-and-forget aggregation settle
+    await publisher.publish({
+      flight: makeFlight(),
+      pricePerPerson: 800,
+      score: 75,
+      scoreBreakdown: baseBreakdown,
+      alertLevel: null,
+    });
+
+    // Allow the microtask queue (the rejected void promise) to flush
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'PriceAggregator: failed to aggregate',
+      expect.any(Error),
+    );
+    consoleSpy.mockRestore();
   });
 });

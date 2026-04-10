@@ -9,32 +9,53 @@ datasource db {
 }
 
 model Search {
-  id              String    @id @default(uuid()) @db.Uuid
-  name            String
-  origin          String
-  destination     String
-  stopover        Json?
-  departureFrom   DateTime  @map("departure_from") @db.Date
-  departureTo     DateTime  @map("departure_to") @db.Date
-  returnMinDays   Int       @map("return_min_days")
-  returnMaxDays   Int       @map("return_max_days")
-  passengers      Int
-  filters         Json
-  alertConfig     Json      @map("alert_config")
-  proxyRegions    String[]  @map("proxy_regions")
-  scanIntervalMin Int       @map("scan_interval_min")
-  active          Boolean   @default(true)
-  mode            String    @default("roundtrip")
-  legs            Json?
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  id                String    @id @default(uuid()) @db.Uuid
+  name              String
+  origin            String
+  destination       String
+  stopover          Json?
+  departureFrom     DateTime  @map("departure_from") @db.Date
+  departureTo       DateTime  @map("departure_to") @db.Date
+  returnMinDays     Int       @map("return_min_days")
+  returnMaxDays     Int       @map("return_max_days")
+  passengers        Int
+  filters           Json
+  alertConfig       Json      @map("alert_config")
+  proxyRegions      String[]  @map("proxy_regions")
+  scanIntervalMin   Int       @map("scan_interval_min")
+  active            Boolean   @default(true)
+  mode              String    @default("roundtrip")
+  legs              Json?
+  status            String    @default("active")
+  snoozedUntil      DateTime? @map("snoozed_until") @db.Timestamptz
+  digestEnabled     Boolean   @default(true) @map("digest_enabled")
+  digestFrequency   String    @default("daily") @map("digest_frequency")
+  lastDigestSentAt  DateTime? @map("last_digest_sent_at") @db.Timestamptz
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
-  flightResults FlightResult[]
-  alerts        Alert[]
-  priceHistory  PriceHistory[]
-  flightCombos  FlightCombo[]
+  flightResults   FlightResult[]
+  alerts          Alert[]
+  priceHistory    PriceHistory[]
+  flightCombos    FlightCombo[]
+  purchaseRecords PurchaseRecord[]
 
   @@map("searches")
+}
+
+model PurchaseRecord {
+  id          String    @id @default(uuid()) @db.Uuid
+  searchId    String    @map("search_id") @db.Uuid
+  pricePaid   Decimal?  @map("price_paid") @db.Decimal(10, 2)
+  currency    String?
+  bookingUrl  String?   @map("booking_url")
+  travelDate  DateTime? @map("travel_date") @db.Date
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  search Search @relation(fields: [searchId], references: [id])
+
+  @@map("purchase_records")
 }
 
 model FlightResult {

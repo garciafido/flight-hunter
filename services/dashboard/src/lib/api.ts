@@ -121,3 +121,67 @@ export async function fetchSuspiciousResults(searchId: string): Promise<any[]> {
   if (!res.ok) throw new Error('Failed to fetch suspicious results');
   return res.json();
 }
+
+export async function snoozeSearch(id: string, until: string): Promise<any> {
+  const res = await fetch(`${BASE}/searches/${id}/snooze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ until }),
+  });
+  if (!res.ok) throw new Error('Failed to snooze search');
+  return res.json();
+}
+
+export async function unsnoozeSearch(id: string): Promise<any> {
+  const res = await fetch(`${BASE}/searches/${id}/unsnooze`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to unsnooze search');
+  return res.json();
+}
+
+export async function purchaseSearch(
+  id: string,
+  data: { pricePaid?: number; currency?: string; bookingUrl?: string; travelDate?: string; notes?: string },
+): Promise<any> {
+  const res = await fetch(`${BASE}/searches/${id}/purchase`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to mark search as purchased');
+  return res.json();
+}
+
+export async function archiveSearch(id: string): Promise<any> {
+  const res = await fetch(`${BASE}/searches/${id}/archive`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to archive search');
+  return res.json();
+}
+
+export async function reactivateSearch(id: string): Promise<any> {
+  const res = await fetch(`${BASE}/searches/${id}/reactivate`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to reactivate search');
+  return res.json();
+}
+
+export async function fetchCalendar(
+  searchId: string,
+  month?: string,
+): Promise<{ month: string; days: Array<{ date: string; minPrice: number; currency: string; resultCount: number }> }> {
+  const qs = month ? `?month=${encodeURIComponent(month)}` : '';
+  const res = await fetch(`${BASE}/searches/${searchId}/calendar${qs}`);
+  if (!res.ok) throw new Error('Failed to fetch calendar');
+  return res.json();
+}
+
+export async function fetchHistory(
+  searchId: string,
+  days?: number,
+): Promise<{
+  history: Array<{ date: string; minPrice: number; avgPrice: number; maxPrice: number; bestScore: number }>;
+  alerts: Array<{ date: string; level: string }>;
+}> {
+  const qs = days != null ? `?days=${days}` : '';
+  const res = await fetch(`${BASE}/searches/${searchId}/history${qs}`);
+  if (!res.ok) throw new Error('Failed to fetch history');
+  return res.json();
+}

@@ -1,5 +1,5 @@
 /* v8 ignore file */
-import { Worker } from 'bullmq';
+import { Worker, Queue } from 'bullmq';
 import { PrismaClient } from '@flight-hunter/shared';
 import Redis from 'ioredis';
 import { WebSocketServer } from 'ws';
@@ -10,6 +10,7 @@ import { createEmailChannel } from './channels/email.js';
 import { createWebSocketBroadcaster } from './channels/websocket.js';
 import { createThrottle } from './throttle.js';
 import { NotifierWorker } from './worker.js';
+import { DailyDigest } from './digest/daily-digest.js';
 
 const redis = new Redis({
   host: process.env.REDIS_HOST ?? 'localhost',
@@ -69,6 +70,31 @@ worker.on('failed', (job, err) => {
 
 worker.on('completed', (job) => {
   console.log(`Job ${job.id} completed`);
+});
+
+// Daily digest: BullMQ repeat job at 9 AM daily
+const digestQueue = new Queue('digest', { connection: redis });
+await digestQueue.add(
+  'daily-digest',
+  {},
+  { repeat: { pattern: '0 9 * * *' } },
+);
+
+const digestWorker = new Worker(
+  'digest',
+  async () => {
+    const digest = new DailyDigest({ prisma, email });
+    await digest.run();
+  },
+  { connection: redis },
+);
+
+digestWorker.on('failed', (job, err) => {
+  console.error(`Digest job ${job?.id} failed:`, err);
+});
+
+digestWorker.on('completed', () => {
+  console.log('Daily digest sent');
 });
 
 console.log('Notifier service started');

@@ -3,6 +3,8 @@ import {
   fetchSearches, fetchSearch, createSearch, updateSearch, deleteSearch,
   fetchResults, fetchAlerts, fetchProxies, createProxy, fetchSystemStatus,
   fetchSystemSettings, updateSystemSettings, promoteResult, fetchSuspiciousResults,
+  snoozeSearch, unsnoozeSearch, purchaseSearch, archiveSearch, reactivateSearch,
+  fetchCalendar, fetchHistory,
 } from '@/lib/api';
 
 function mockFetch(ok: boolean, data: any) {
@@ -224,5 +226,114 @@ describe('fetchSuspiciousResults', () => {
   it('throws on failure', async () => {
     global.fetch = mockFetch(false, {});
     await expect(fetchSuspiciousResults('search-abc')).rejects.toThrow('Failed to fetch suspicious results');
+  });
+});
+
+describe('snoozeSearch', () => {
+  it('sends POST to snooze endpoint', async () => {
+    global.fetch = mockFetch(true, { id: 's1', status: 'snoozed' });
+    const result = await snoozeSearch('s1', '1day');
+    expect(fetch).toHaveBeenCalledWith('/api/searches/s1/snooze', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ until: '1day' }),
+    }));
+    expect(result).toEqual({ id: 's1', status: 'snoozed' });
+  });
+  it('throws on failure', async () => {
+    global.fetch = mockFetch(false, {});
+    await expect(snoozeSearch('s1', '1day')).rejects.toThrow('Failed to snooze search');
+  });
+});
+
+describe('unsnoozeSearch', () => {
+  it('sends POST to unsnooze endpoint', async () => {
+    global.fetch = mockFetch(true, { id: 's1', status: 'active' });
+    const result = await unsnoozeSearch('s1');
+    expect(fetch).toHaveBeenCalledWith('/api/searches/s1/unsnooze', { method: 'POST' });
+    expect(result).toEqual({ id: 's1', status: 'active' });
+  });
+  it('throws on failure', async () => {
+    global.fetch = mockFetch(false, {});
+    await expect(unsnoozeSearch('s1')).rejects.toThrow('Failed to unsnooze search');
+  });
+});
+
+describe('purchaseSearch', () => {
+  it('sends POST to purchase endpoint', async () => {
+    global.fetch = mockFetch(true, { search: { id: 's1' }, purchaseRecord: { id: 'pr1' } });
+    const result = await purchaseSearch('s1', { pricePaid: 350, currency: 'USD' });
+    expect(fetch).toHaveBeenCalledWith('/api/searches/s1/purchase', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ pricePaid: 350, currency: 'USD' }),
+    }));
+    expect(result.search.id).toBe('s1');
+  });
+  it('throws on failure', async () => {
+    global.fetch = mockFetch(false, {});
+    await expect(purchaseSearch('s1', {})).rejects.toThrow('Failed to mark search as purchased');
+  });
+});
+
+describe('archiveSearch', () => {
+  it('sends POST to archive endpoint', async () => {
+    global.fetch = mockFetch(true, { id: 's1', status: 'archived' });
+    const result = await archiveSearch('s1');
+    expect(fetch).toHaveBeenCalledWith('/api/searches/s1/archive', { method: 'POST' });
+    expect(result).toEqual({ id: 's1', status: 'archived' });
+  });
+  it('throws on failure', async () => {
+    global.fetch = mockFetch(false, {});
+    await expect(archiveSearch('s1')).rejects.toThrow('Failed to archive search');
+  });
+});
+
+describe('reactivateSearch', () => {
+  it('sends POST to reactivate endpoint', async () => {
+    global.fetch = mockFetch(true, { id: 's1', status: 'active' });
+    const result = await reactivateSearch('s1');
+    expect(fetch).toHaveBeenCalledWith('/api/searches/s1/reactivate', { method: 'POST' });
+    expect(result).toEqual({ id: 's1', status: 'active' });
+  });
+  it('throws on failure', async () => {
+    global.fetch = mockFetch(false, {});
+    await expect(reactivateSearch('s1')).rejects.toThrow('Failed to reactivate search');
+  });
+});
+
+describe('fetchCalendar', () => {
+  it('fetches calendar without month param', async () => {
+    global.fetch = mockFetch(true, { month: '2026-07', days: [] });
+    const result = await fetchCalendar('s1');
+    expect(fetch).toHaveBeenCalledWith('/api/searches/s1/calendar');
+    expect(result.month).toBe('2026-07');
+  });
+  it('fetches calendar with month param', async () => {
+    global.fetch = mockFetch(true, { month: '2026-07', days: [{ date: '2026-07-25', minPrice: 285, currency: 'USD', resultCount: 3 }] });
+    const result = await fetchCalendar('s1', '2026-07');
+    expect(fetch).toHaveBeenCalledWith('/api/searches/s1/calendar?month=2026-07');
+    expect(result.days).toHaveLength(1);
+  });
+  it('throws on failure', async () => {
+    global.fetch = mockFetch(false, {});
+    await expect(fetchCalendar('s1')).rejects.toThrow('Failed to fetch calendar');
+  });
+});
+
+describe('fetchHistory', () => {
+  it('fetches history without days param', async () => {
+    global.fetch = mockFetch(true, { history: [], alerts: [] });
+    const result = await fetchHistory('s1');
+    expect(fetch).toHaveBeenCalledWith('/api/searches/s1/history');
+    expect(result.history).toEqual([]);
+  });
+  it('fetches history with days param', async () => {
+    global.fetch = mockFetch(true, { history: [{ date: '2026-04-01', minPrice: 280, avgPrice: 350, maxPrice: 450, bestScore: 75 }], alerts: [] });
+    const result = await fetchHistory('s1', 30);
+    expect(fetch).toHaveBeenCalledWith('/api/searches/s1/history?days=30');
+    expect(result.history).toHaveLength(1);
+  });
+  it('throws on failure', async () => {
+    global.fetch = mockFetch(false, {});
+    await expect(fetchHistory('s1')).rejects.toThrow('Failed to fetch history');
   });
 });

@@ -2,6 +2,7 @@ import type { Queue } from 'bullmq';
 import type { PrismaClient } from '@flight-hunter/shared';
 import type { FlightResult, AlertLevel, ScoreBreakdown } from '@flight-hunter/shared';
 import type { AlertJob } from '@flight-hunter/shared';
+import { PriceAggregator } from './aggregation/price-aggregator.js';
 
 export interface PublishPayload {
   flight: FlightResult;
@@ -14,10 +15,14 @@ export interface PublishPayload {
 }
 
 export class Publisher {
+  private readonly aggregator: PriceAggregator;
+
   constructor(
     private readonly alertQueue: Queue,
     private readonly prisma: PrismaClient,
-  ) {}
+  ) {
+    this.aggregator = new PriceAggregator(prisma);
+  }
 
   async publish(payload: PublishPayload): Promise<void> {
     const { flight, pricePerPerson, score, scoreBreakdown, alertLevel, suspicious, suspicionReason } = payload;
@@ -52,6 +57,11 @@ export class Publisher {
         legIndex: flight.legIndex ?? 0,
         scrapedAt: flight.scrapedAt,
       },
+    });
+
+    // Async aggregation: upsert daily price_history (non-blocking)
+    void this.aggregator.aggregate(flight.searchId, saved.scrapedAt ?? new Date()).catch((err) => {
+      console.error('PriceAggregator: failed to aggregate', err);
     });
 
     // Suspicious flights do not trigger alerts

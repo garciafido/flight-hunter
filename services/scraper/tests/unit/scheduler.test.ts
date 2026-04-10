@@ -7,17 +7,25 @@ const makeSearch = (overrides = {}) => ({
   origin: 'SCL',
   destination: 'MAD',
   active: true,
+  status: 'active',
+  snoozedUntil: null,
   ...overrides,
 });
 
 describe('Scheduler', () => {
-  let prisma: { search: { findMany: ReturnType<typeof vi.fn> } };
+  let prisma: {
+    search: {
+      findMany: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
+    };
+  };
   let jobProcessor: { execute: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     prisma = {
       search: {
         findMany: vi.fn().mockResolvedValue([makeSearch()]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
     };
     jobProcessor = {
@@ -39,7 +47,9 @@ describe('Scheduler', () => {
       const scheduler = new Scheduler(prisma as never, jobProcessor as never);
       await scheduler.tick();
 
-      expect(prisma.search.findMany).toHaveBeenCalledWith({ where: { active: true } });
+      expect(prisma.search.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ status: 'active' }) }),
+      );
       expect(jobProcessor.execute).toHaveBeenCalledTimes(2);
       expect(jobProcessor.execute).toHaveBeenCalledWith(search1);
       expect(jobProcessor.execute).toHaveBeenCalledWith(search2);
@@ -58,6 +68,47 @@ describe('Scheduler', () => {
     });
 
     it('does nothing when no active searches exist', async () => {
+      prisma.search.findMany.mockResolvedValue([]);
+
+      const scheduler = new Scheduler(prisma as never, jobProcessor as never);
+      await scheduler.tick();
+
+      expect(jobProcessor.execute).not.toHaveBeenCalled();
+    });
+
+    it('auto-resumes snoozed searches whose snoozedUntil has passed', async () => {
+      prisma.search.findMany.mockResolvedValue([]);
+
+      const scheduler = new Scheduler(prisma as never, jobProcessor as never);
+      await scheduler.tick();
+
+      expect(prisma.search.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: 'snoozed' }),
+          data: expect.objectContaining({ status: 'active', snoozedUntil: null }),
+        }),
+      );
+    });
+
+    it('calls updateMany before findMany on each tick', async () => {
+      const callOrder: string[] = [];
+      prisma.search.updateMany.mockImplementation(async () => {
+        callOrder.push('updateMany');
+        return { count: 0 };
+      });
+      prisma.search.findMany.mockImplementation(async () => {
+        callOrder.push('findMany');
+        return [];
+      });
+
+      const scheduler = new Scheduler(prisma as never, jobProcessor as never);
+      await scheduler.tick();
+
+      expect(callOrder).toEqual(['updateMany', 'findMany']);
+    });
+
+    it('does not execute jobs for snoozed searches (not returned by findMany)', async () => {
+      // Snoozed searches are filtered out by status='active' query
       prisma.search.findMany.mockResolvedValue([]);
 
       const scheduler = new Scheduler(prisma as never, jobProcessor as never);

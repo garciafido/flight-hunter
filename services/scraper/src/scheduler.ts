@@ -11,8 +11,26 @@ export class Scheduler {
   ) {}
 
   async tick(): Promise<void> {
-    const searches = await this.prisma.search.findMany({
-      where: { active: true },
+    const now = new Date();
+
+    // Auto-resume snoozed searches whose snoozedUntil has passed
+    await (this.prisma.search.updateMany as any)({
+      where: {
+        status: 'snoozed',
+        snoozedUntil: { lte: now, not: null },
+      },
+      data: {
+        status: 'active',
+        snoozedUntil: null,
+      },
+    });
+
+    // Fetch searches that are active (status = 'active')
+    const searches = await (this.prisma.search.findMany as any)({
+      where: {
+        status: 'active',
+        active: true,
+      },
     });
 
     console.log(`Scheduler: found ${searches.length} active search(es)`);
