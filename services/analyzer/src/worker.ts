@@ -13,7 +13,7 @@ import { HistoryService } from './detection/history.js';
 import { OutlierDetector } from './detection/outlier-detector.js';
 import { Publisher } from './publisher.js';
 import { resolveWeights } from './scoring/weights.js';
-import { buildCombos, scoreCombo } from './combos/combo-builder.js';
+import { buildCombos, scoreCombo, topNPerLeg } from './combos/combo-builder.js';
 
 export interface AnalyzerDeps {
   prisma: PrismaClient;
@@ -144,7 +144,8 @@ export class AnalyzerWorker {
     searchConfig: SearchConfig,
     searchRecord: any,
   ): Promise<void> {
-    const TOP_N = 5;
+    const maxCombos: number = (searchRecord as any).maxCombos ?? 100;
+    const TOP_N = topNPerLeg(maxCombos, legCount);
 
     // Fetch top N cheapest results per leg
     const legResultArrays: FlightResult[][] = [];

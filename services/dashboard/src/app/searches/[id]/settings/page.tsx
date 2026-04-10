@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { fetchSearch, updateSearch } from '@/lib/api';
+import { REGION_PRESETS } from '@flight-hunter/shared';
 
 function toDateInput(d: any): string {
   if (!d) return '';
@@ -62,6 +63,12 @@ export default function SearchSettingsPage() {
         active: search.active,
         mode: search.mode ?? 'roundtrip',
         legs: (search.mode ?? 'roundtrip') === 'split' ? (search.legs ?? []) : null,
+        destinationMode: search.destinationMode ?? 'single',
+        destinationCandidates: search.destinationMode === 'flexible' ? (search.destinationCandidates ?? []) : null,
+        windowMode: search.windowMode ?? false,
+        windowDuration: search.windowMode ? (search.windowDuration ?? null) : null,
+        windowFlexibility: search.windowMode ? (search.windowFlexibility ?? 0) : 0,
+        maxCombos: search.maxCombos ?? 100,
       });
       router.push(`/searches/${id}`);
     } catch (err: any) {
@@ -158,6 +165,162 @@ export default function SearchSettingsPage() {
             </select>
           </div>
         </div>
+
+        {/* Section A: Destination mode */}
+        <div style={sectionStyle}>
+          <h2 style={sectionTitle}>Modo de destino</h2>
+          <div style={{ display: 'flex', gap: 24, marginBottom: 16 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name="destinationMode"
+                value="single"
+                checked={(search.destinationMode ?? 'single') === 'single'}
+                onChange={() => update('destinationMode', 'single')}
+              />
+              Destino fijo
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name="destinationMode"
+                value="flexible"
+                checked={search.destinationMode === 'flexible'}
+                onChange={() => update('destinationMode', 'flexible')}
+              />
+              Flexible (varios candidatos)
+            </label>
+          </div>
+          {search.destinationMode === 'flexible' && (
+            <div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={labelStyle}>Códigos IATA (separados por coma)</label>
+                <input
+                  value={(search.destinationCandidates ?? []).filter((c: string) => !Object.keys(REGION_PRESETS).includes(c)).join(', ')}
+                  onChange={e => {
+                    const iatas = e.target.value.split(',').map((s: string) => s.trim().toUpperCase()).filter(Boolean);
+                    const regions = (search.destinationCandidates ?? []).filter((c: string) => Object.keys(REGION_PRESETS).includes(c));
+                    update('destinationCandidates', [...regions, ...iatas]);
+                  }}
+                  placeholder="CUZ, LIM, BOG"
+                  style={inputStyle}
+                />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={labelStyle}>Presets de región</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {Object.keys(REGION_PRESETS).map(preset => {
+                    const selected = (search.destinationCandidates ?? []).includes(preset);
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => {
+                          const current: string[] = search.destinationCandidates ?? [];
+                          update('destinationCandidates', selected
+                            ? current.filter((c: string) => c !== preset)
+                            : [...current, preset]);
+                        }}
+                        style={{
+                          padding: '4px 12px',
+                          borderRadius: 16,
+                          border: `1px solid ${selected ? '#2563eb' : '#d1d5db'}`,
+                          background: selected ? '#eff6ff' : '#fff',
+                          color: selected ? '#2563eb' : '#374151',
+                          fontSize: 13,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {preset}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div style={{ fontSize: 13, color: '#6b7280' }}>
+                Total destinos expandidos: <strong>{
+                  (search.destinationCandidates ?? []).reduce((acc: number, c: string) => {
+                    return acc + (REGION_PRESETS[c] ? REGION_PRESETS[c].length : 1);
+                  }, 0)
+                }</strong>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Section B: Window mode */}
+        {(search.mode ?? 'roundtrip') === 'roundtrip' && (
+          <div style={sectionStyle}>
+            <h2 style={sectionTitle}>Modo de fechas</h2>
+            <div style={{ display: 'flex', gap: 24, marginBottom: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="windowMode"
+                  value="fixed"
+                  checked={!search.windowMode}
+                  onChange={() => update('windowMode', false)}
+                />
+                Fechas fijas
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="windowMode"
+                  value="window"
+                  checked={!!search.windowMode}
+                  onChange={() => update('windowMode', true)}
+                />
+                Ventana flexible
+              </label>
+            </div>
+            {search.windowMode && (
+              <div style={grid2}>
+                <div>
+                  <label style={labelStyle}>Duración del viaje (días)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={search.windowDuration ?? ''}
+                    onChange={e => update('windowDuration', parseInt(e.target.value, 10))}
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Flexibilidad (± días)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={search.windowFlexibility ?? 0}
+                    onChange={e => update('windowFlexibility', parseInt(e.target.value, 10))}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Section C: Advanced — combo cap for split mode */}
+        {(search.mode ?? 'roundtrip') === 'split' && (
+          <div style={sectionStyle}>
+            <h2 style={sectionTitle}>Avanzado</h2>
+            <div style={{ maxWidth: 240 }}>
+              <label style={labelStyle}>Cap de combinaciones (maxCombos)</label>
+              <input
+                type="number"
+                min={10}
+                max={1000}
+                value={search.maxCombos ?? 100}
+                onChange={e => update('maxCombos', parseInt(e.target.value, 10))}
+                style={inputStyle}
+              />
+              <p style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 0' }}>
+                Límite de combos split generados. Mín 10, máx 1000.
+              </p>
+            </div>
+          </div>
+        )}
 
         {(search.mode ?? 'roundtrip') === 'split' && (
           <div style={sectionStyle}>

@@ -1,6 +1,6 @@
 import type { Queue } from 'bullmq';
 import type { SearchConfig, FlightResult } from '@flight-hunter/shared';
-import { QUEUE_NAMES } from '@flight-hunter/shared';
+import { QUEUE_NAMES, expandDestinationCandidates } from '@flight-hunter/shared';
 import type { FlightSource } from '../sources/base-source.js';
 import type { VpnRouter } from '../proxy/vpn-router.js';
 import type { GoogleFlightsSource } from '../sources/google-flights.js';
@@ -20,12 +20,71 @@ export class SearchJobProcessor {
   }
 
   async execute(config: SearchConfig): Promise<void> {
+    // Flexible destination: iterate over each expanded candidate
+    if (config.destinationMode === 'flexible' && config.destinationCandidates?.length) {
+      return this.executeFlexibleDestination(config);
+    }
+
+    // Window mode: iterate over vacation windows
+    if (config.windowMode && config.windowDuration) {
+      return this.executeWindowMode(config);
+    }
+
     const mode = config.mode ?? 'roundtrip';
 
     if (mode === 'split' && config.legs && config.legs.length > 0) {
       await this.executeSplit(config);
     } else {
       await this.executeRoundtrip(config);
+    }
+  }
+
+  private async executeFlexibleDestination(config: SearchConfig): Promise<void> {
+    const destinations = expandDestinationCandidates(config.destinationCandidates!);
+    for (const destination of destinations) {
+      const syntheticConfig: SearchConfig = {
+        ...config,
+        destination,
+        destinationMode: 'single',
+        destinationCandidates: undefined,
+      };
+      const mode = config.mode ?? 'roundtrip';
+      if (mode === 'split' && config.legs && config.legs.length > 0) {
+        await this.executeSplit(syntheticConfig);
+      } else {
+        await this.executeRoundtrip(syntheticConfig);
+      }
+    }
+  }
+
+  private async executeWindowMode(config: SearchConfig): Promise<void> {
+    const duration = config.windowDuration!;
+    const flexibility = config.windowFlexibility ?? 0;
+    const rangeStart = new Date(config.departureFrom);
+    const rangeEnd = new Date(config.departureTo);
+
+    const MAX_WINDOWS = 30;
+    let windowCount = 0;
+
+    const current = new Date(rangeStart);
+    while (current <= rangeEnd && windowCount < MAX_WINDOWS) {
+      const windowStart = new Date(current);
+      const windowEnd = new Date(current);
+      windowEnd.setDate(windowEnd.getDate() + duration);
+
+      const syntheticConfig: SearchConfig = {
+        ...config,
+        departureFrom: windowStart,
+        departureTo: windowStart,
+        returnMinDays: Math.max(1, duration - flexibility),
+        returnMaxDays: duration + flexibility,
+        windowMode: false,
+      };
+
+      await this.executeRoundtrip(syntheticConfig);
+      windowCount++;
+
+      current.setDate(current.getDate() + 1);
     }
   }
 

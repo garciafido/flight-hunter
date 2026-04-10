@@ -26,6 +26,12 @@ model Search {
   active            Boolean   @default(true)
   mode              String    @default("roundtrip")
   legs              Json?
+  destinationMode       String   @default("single") @map("destination_mode")
+  destinationCandidates Json?    @map("destination_candidates")
+  windowMode            Boolean  @default(false) @map("window_mode")
+  windowDuration        Int?     @map("window_duration")
+  windowFlexibility     Int      @default(0) @map("window_flexibility")
+  maxCombos             Int      @default(100) @map("max_combos")
   status            String    @default("active")
   snoozedUntil      DateTime? @map("snoozed_until") @db.Timestamptz
   digestEnabled     Boolean   @default(true) @map("digest_enabled")

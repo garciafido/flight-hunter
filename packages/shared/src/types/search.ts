@@ -1,3 +1,5 @@
+export type DestinationMode = 'single' | 'flexible';
+
 export type StopoverLeg = 'outbound' | 'inbound' | 'any';
 
 export interface StopoverConfig {
@@ -63,4 +65,10 @@ export interface SearchConfig {
   active: boolean;
   mode?: SearchMode; // defaults to 'roundtrip'
   legs?: SearchLeg[]; // only used when mode='split'
+  destinationMode?: DestinationMode; // defaults to 'single'
+  destinationCandidates?: string[]; // IATA codes or region preset keys
+  windowMode?: boolean; // defaults to false
+  windowDuration?: number; // trip length in days
+  windowFlexibility?: number; // ± days around windowDuration
+  maxCombos?: number; // cap for split mode combos, defaults to 100
 }

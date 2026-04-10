@@ -4,7 +4,7 @@ import {
   fetchResults, fetchAlerts, fetchProxies, createProxy, fetchSystemStatus,
   fetchSystemSettings, updateSystemSettings, promoteResult, fetchSuspiciousResults,
   snoozeSearch, unsnoozeSearch, purchaseSearch, archiveSearch, reactivateSearch,
-  fetchCalendar, fetchHistory,
+  fetchCalendar, fetchHistory, fetchDestinations, fetchWindows,
 } from '@/lib/api';
 
 function mockFetch(ok: boolean, data: any) {
@@ -335,5 +335,45 @@ describe('fetchHistory', () => {
   it('throws on failure', async () => {
     global.fetch = mockFetch(false, {});
     await expect(fetchHistory('s1')).rejects.toThrow('Failed to fetch history');
+  });
+});
+
+describe('fetchDestinations', () => {
+  it('fetches destinations for a search', async () => {
+    const data = {
+      destinations: [
+        { iata: 'CUZ', minPrice: 285, currency: 'USD', resultCount: 12, topResultId: 'r1' },
+        { iata: 'LIM', minPrice: 310, currency: 'USD', resultCount: 18, topResultId: 'r2' },
+      ],
+    };
+    global.fetch = mockFetch(true, data);
+    const result = await fetchDestinations('s1');
+    expect(fetch).toHaveBeenCalledWith('/api/searches/s1/destinations');
+    expect(result.destinations).toHaveLength(2);
+    expect(result.destinations[0].iata).toBe('CUZ');
+  });
+  it('throws on failure', async () => {
+    global.fetch = mockFetch(false, {});
+    await expect(fetchDestinations('s1')).rejects.toThrow('Failed to fetch destinations');
+  });
+});
+
+describe('fetchWindows', () => {
+  it('fetches windows for a search', async () => {
+    const data = {
+      windows: [
+        { start: '2026-07-05', end: '2026-07-19', duration: 14, minPrice: 380, currency: 'USD', resultCount: 5, topResultId: 'r1' },
+        { start: '2026-07-12', end: '2026-07-26', duration: 14, minPrice: 360, currency: 'USD', resultCount: 3, topResultId: 'r2' },
+      ],
+    };
+    global.fetch = mockFetch(true, data);
+    const result = await fetchWindows('s1');
+    expect(fetch).toHaveBeenCalledWith('/api/searches/s1/windows');
+    expect(result.windows).toHaveLength(2);
+    expect(result.windows[0].start).toBe('2026-07-05');
+  });
+  it('throws on failure', async () => {
+    global.fetch = mockFetch(false, {});
+    await expect(fetchWindows('s1')).rejects.toThrow('Failed to fetch windows');
   });
 });

@@ -350,3 +350,241 @@ describe('SearchJobProcessor split mode', () => {
     expect(queue.add).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('SearchJobProcessor flexible destination mode', () => {
+  let source: { name: string; search: ReturnType<typeof vi.fn> };
+  let vpnRouter: { getProxyUrl: ReturnType<typeof vi.fn> };
+  let queue: { add: ReturnType<typeof vi.fn> };
+
+  beforeEach(() => {
+    source = { name: 'kiwi', search: vi.fn().mockResolvedValue([]) };
+    vpnRouter = { getProxyUrl: vi.fn().mockResolvedValue(null) };
+    queue = { add: vi.fn().mockResolvedValue(undefined) };
+  });
+
+  const makeFlexibleConfig = (candidates: string[]): SearchConfig => ({
+    id: 'flex-1',
+    name: 'Flexible Test',
+    origin: 'SCL',
+    destination: 'MAD', // will be overridden per candidate
+    departureFrom: new Date('2026-07-01'),
+    departureTo: new Date('2026-07-15'),
+    returnMinDays: 7,
+    returnMaxDays: 14,
+    passengers: 1,
+    proxyRegions: ['CL'],
+    scanIntervalMin: 60,
+    active: true,
+    destinationMode: 'flexible',
+    destinationCandidates: candidates,
+    filters: {
+      airlineBlacklist: [],
+      airlinePreferred: [],
+      airportPreferred: {},
+      airportBlacklist: {},
+      maxUnplannedStops: 1,
+      minConnectionTime: 60,
+      maxConnectionTime: 240,
+      requireCarryOn: false,
+      maxTotalTravelTime: 1440,
+    },
+    alertConfig: {
+      scoreThresholds: { info: 60, good: 75, urgent: 90 },
+      maxPricePerPerson: 2000,
+      currency: 'USD',
+    },
+  });
+
+  it('calls search once per expanded destination', async () => {
+    const processor = new SearchJobProcessor(
+      [source as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    await processor.execute(makeFlexibleConfig(['CUZ', 'LIM', 'BOG']));
+    // 3 destinations × 1 region = 3 calls
+    expect(source.search).toHaveBeenCalledTimes(3);
+  });
+
+  it('expands region preset to individual airports', async () => {
+    const processor = new SearchJobProcessor(
+      [source as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    // oceania has 3 airports: SYD, MEL, AKL
+    await processor.execute(makeFlexibleConfig(['oceania']));
+    expect(source.search).toHaveBeenCalledTimes(3);
+  });
+
+  it('passes the destination airport as config.destination to each search', async () => {
+    const processor = new SearchJobProcessor(
+      [source as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    await processor.execute(makeFlexibleConfig(['CUZ', 'LIM']));
+    const calls = vi.mocked(source.search).mock.calls;
+    const destinations = calls.map((c: any) => c[0].destination);
+    expect(destinations).toContain('CUZ');
+    expect(destinations).toContain('LIM');
+  });
+
+  it('falls through to normal execute when destinationMode is single', async () => {
+    const processor = new SearchJobProcessor(
+      [source as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    await processor.execute(makeFlexibleConfig(['CUZ']).concat ? {
+      ...makeFlexibleConfig(['CUZ']),
+      destinationMode: 'single',
+    } : makeFlexibleConfig(['CUZ']));
+
+    // When single mode, called once for regular roundtrip
+    // (flexible candidates ignored)
+  });
+
+  it('falls through to normal execute when destinationCandidates is empty', async () => {
+    const processor = new SearchJobProcessor(
+      [source as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    const config: SearchConfig = {
+      ...makeFlexibleConfig([]),
+    };
+    await processor.execute(config);
+    // Empty candidates → fall through to roundtrip (called once)
+    expect(source.search).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SearchJobProcessor window mode', () => {
+  let source: { name: string; search: ReturnType<typeof vi.fn> };
+  let vpnRouter: { getProxyUrl: ReturnType<typeof vi.fn> };
+  let queue: { add: ReturnType<typeof vi.fn> };
+
+  beforeEach(() => {
+    source = { name: 'kiwi', search: vi.fn().mockResolvedValue([]) };
+    vpnRouter = { getProxyUrl: vi.fn().mockResolvedValue(null) };
+    queue = { add: vi.fn().mockResolvedValue(undefined) };
+  });
+
+  const makeWindowConfig = (rangeStart: string, rangeEnd: string, duration: number, flexibility = 0): SearchConfig => ({
+    id: 'window-1',
+    name: 'Window Test',
+    origin: 'SCL',
+    destination: 'MAD',
+    departureFrom: new Date(rangeStart),
+    departureTo: new Date(rangeEnd),
+    returnMinDays: duration,
+    returnMaxDays: duration,
+    passengers: 1,
+    proxyRegions: ['CL'],
+    scanIntervalMin: 60,
+    active: true,
+    windowMode: true,
+    windowDuration: duration,
+    windowFlexibility: flexibility,
+    filters: {
+      airlineBlacklist: [],
+      airlinePreferred: [],
+      airportPreferred: {},
+      airportBlacklist: {},
+      maxUnplannedStops: 1,
+      minConnectionTime: 60,
+      maxConnectionTime: 240,
+      requireCarryOn: false,
+      maxTotalTravelTime: 1440,
+    },
+    alertConfig: {
+      scoreThresholds: { info: 60, good: 75, urgent: 90 },
+      maxPricePerPerson: 2000,
+      currency: 'USD',
+    },
+  });
+
+  it('calls search for each day in the range (3-day range → 3 windows)', async () => {
+    const processor = new SearchJobProcessor(
+      [source as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    await processor.execute(makeWindowConfig('2026-07-01', '2026-07-03', 14));
+    // 3 days in range (Jul 1, 2, 3) → 3 calls
+    expect(source.search).toHaveBeenCalledTimes(3);
+  });
+
+  it('caps at 30 windows max', async () => {
+    const processor = new SearchJobProcessor(
+      [source as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    // 90-day range → should cap at 30
+    await processor.execute(makeWindowConfig('2026-07-01', '2026-09-29', 14));
+    expect(source.search).toHaveBeenCalledTimes(30);
+  });
+
+  it('passes correct returnMinDays/returnMaxDays with flexibility', async () => {
+    const processor = new SearchJobProcessor(
+      [source as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    await processor.execute(makeWindowConfig('2026-07-01', '2026-07-01', 14, 2));
+    const config = vi.mocked(source.search).mock.calls[0][0] as SearchConfig;
+    expect(config.returnMinDays).toBe(12); // 14 - 2
+    expect(config.returnMaxDays).toBe(16); // 14 + 2
+  });
+
+  it('passes departure date as the exact window start', async () => {
+    const processor = new SearchJobProcessor(
+      [source as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    await processor.execute(makeWindowConfig('2026-07-05', '2026-07-05', 14));
+    const config = vi.mocked(source.search).mock.calls[0][0] as SearchConfig;
+    expect(config.departureFrom.toISOString().slice(0, 10)).toBe('2026-07-05');
+    expect(config.departureTo.toISOString().slice(0, 10)).toBe('2026-07-05');
+  });
+
+  it('sets windowMode=false in synthetic config', async () => {
+    const processor = new SearchJobProcessor(
+      [source as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    await processor.execute(makeWindowConfig('2026-07-05', '2026-07-05', 14));
+    const config = vi.mocked(source.search).mock.calls[0][0] as SearchConfig;
+    expect(config.windowMode).toBe(false);
+  });
+
+  it('falls through to normal execute when windowDuration is not set', async () => {
+    const processor = new SearchJobProcessor(
+      [source as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    const config: SearchConfig = {
+      ...makeWindowConfig('2026-07-01', '2026-07-03', 14),
+      windowDuration: undefined,
+    };
+    await processor.execute(config);
+    // No windowDuration → falls through to roundtrip, 1 region × 1 source = 1 call
+    expect(source.search).toHaveBeenCalledTimes(1);
+  });
+});

@@ -207,3 +207,110 @@ describe('AnalyzerWorker', () => {
     await expect(worker.process(makeRawJob())).resolves.not.toThrow();
   });
 });
+
+describe('AnalyzerWorker N-leg combo evaluation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function makeSearchRecordSplit(legCount: number, maxCombos = 100) {
+    return {
+      id: 'search-1',
+      name: 'N-leg Split',
+      origin: 'BUE',
+      destination: 'CUZ',
+      mode: 'split',
+      maxCombos,
+      legs: Array.from({ length: legCount }, (_, i) => ({
+        origin: 'BUE',
+        destination: 'CUZ',
+        departureFrom: new Date(`2026-0${i + 1}-01`),
+        departureTo: new Date(`2026-0${i + 1}-15`),
+      })),
+      filters: {
+        airlineBlacklist: [],
+        airlinePreferred: [],
+        airportPreferred: {},
+        airportBlacklist: {},
+        maxUnplannedStops: 2,
+        minConnectionTime: 60,
+        maxConnectionTime: 480,
+        requireCarryOn: false,
+        maxTotalTravelTime: 2880,
+      },
+      alertConfig: {
+        scoreThresholds: { info: 50, good: 70, urgent: 85 },
+        maxPricePerPerson: 2000,
+        currency: 'USD',
+      },
+      stopover: null,
+    };
+  }
+
+  function makeFlightResultRow(legIndex: number, price: number, deptTime: string) {
+    return {
+      id: `result-leg${legIndex}`,
+      searchId: 'search-1',
+      source: 'google-flights',
+      outbound: { departure: { airport: 'BUE', time: deptTime }, arrival: { airport: 'CUZ', time: deptTime }, airline: 'LA', flightNumber: 'LA1', durationMinutes: 600, stops: 0 },
+      inbound: { departure: { airport: 'CUZ', time: deptTime }, arrival: { airport: 'BUE', time: deptTime }, airline: 'LA', flightNumber: 'LA2', durationMinutes: 600, stops: 0 },
+      pricePerPerson: price,
+      currency: 'USD',
+      carryOnIncluded: true,
+      bookingUrl: 'https://example.com',
+      proxyRegion: 'AR',
+      legIndex,
+      scrapedAt: new Date(),
+    };
+  }
+
+  it('evaluates combos for 3-leg split search using maxCombos from search record', async () => {
+    const searchRecord = makeSearchRecordSplit(3, 100);
+    const prisma = {
+      search: { findUnique: vi.fn().mockResolvedValue(searchRecord) },
+      flightResult: {
+        create: vi.fn().mockResolvedValue({ id: 'result-1' }),
+        findMany: vi.fn()
+          .mockResolvedValueOnce([makeFlightResultRow(0, 200, '2026-07-01T10:00:00.000Z')])
+          .mockResolvedValueOnce([makeFlightResultRow(1, 150, '2026-08-01T10:00:00.000Z')])
+          .mockResolvedValueOnce([makeFlightResultRow(2, 220, '2026-09-01T10:00:00.000Z')]),
+      },
+      flightCombo: { create: vi.fn().mockResolvedValue({ id: 'combo-1' }) },
+    } as unknown as PrismaClient;
+
+    const deps = makeDeps(searchRecord);
+    (deps as any).prisma = prisma;
+    (deps.publisher as any).publish = vi.fn().mockResolvedValue(undefined);
+
+    const worker = new AnalyzerWorker(deps);
+    await worker.process(makeRawJob({ searchId: 'search-1' }));
+
+    // Publisher should be called
+    expect(deps.publisher.publish).toHaveBeenCalled();
+  });
+
+  it('uses maxCombos=100 as default when not set', async () => {
+    const searchRecord = makeSearchRecordSplit(2);
+    // Remove maxCombos to test default
+    delete (searchRecord as any).maxCombos;
+
+    const prisma = {
+      search: { findUnique: vi.fn().mockResolvedValue(searchRecord) },
+      flightResult: {
+        create: vi.fn().mockResolvedValue({ id: 'result-1' }),
+        findMany: vi.fn()
+          .mockResolvedValueOnce([makeFlightResultRow(0, 200, '2026-07-01T10:00:00.000Z')])
+          .mockResolvedValueOnce([makeFlightResultRow(1, 150, '2026-08-01T10:00:00.000Z')]),
+      },
+      flightCombo: { create: vi.fn().mockResolvedValue({ id: 'combo-1' }) },
+    } as unknown as PrismaClient;
+
+    const deps = makeDeps(searchRecord);
+    (deps as any).prisma = prisma;
+    (deps.publisher as any).publish = vi.fn().mockResolvedValue(undefined);
+
+    const worker = new AnalyzerWorker(deps);
+    // Should not throw
+    await expect(worker.process(makeRawJob({ searchId: 'search-1' }))).resolves.not.toThrow();
+  });
+});

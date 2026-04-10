@@ -185,3 +185,23 @@ export async function fetchHistory(
   if (!res.ok) throw new Error('Failed to fetch history');
   return res.json();
 }
+
+export async function fetchDestinations(
+  searchId: string,
+): Promise<{
+  destinations: Array<{ iata: string; minPrice: number; currency: string; resultCount: number; topResultId: string }>;
+}> {
+  const res = await fetch(`${BASE}/searches/${searchId}/destinations`);
+  if (!res.ok) throw new Error('Failed to fetch destinations');
+  return res.json();
+}
+
+export async function fetchWindows(
+  searchId: string,
+): Promise<{
+  windows: Array<{ start: string; end: string; duration: number; minPrice: number; currency: string; resultCount: number; topResultId: string }>;
+}> {
+  const res = await fetch(`${BASE}/searches/${searchId}/windows`);
+  if (!res.ok) throw new Error('Failed to fetch windows');
+  return res.json();
+}

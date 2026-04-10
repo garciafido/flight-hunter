@@ -16,10 +16,14 @@ import {
   reactivateSearch,
   fetchCalendar,
   fetchHistory,
+  fetchDestinations,
+  fetchWindows,
 } from '@/lib/api';
 import { FlightCard } from '@/components/flight-card';
 import { PriceChart } from '@/components/price-chart';
 import { PriceHeatmap } from '@/components/price-heatmap';
+import { DestinationCard } from '@/components/destination-card';
+import { WindowRow } from '@/components/window-row';
 
 function StatusBanner({ search, onReactivate }: { search: any; onReactivate: () => void }) {
   if (search.status === 'snoozed') {
@@ -81,6 +85,8 @@ export default function SearchDetailPage() {
   const [purchaseForm, setPurchaseForm] = useState({ pricePaid: '', currency: 'USD', bookingUrl: '', travelDate: '', notes: '' });
   const [calendarData, setCalendarData] = useState<any>(null);
   const [historyData, setHistoryData] = useState<any>(null);
+  const [destinationsData, setDestinationsData] = useState<any>(null);
+  const [windowsData, setWindowsData] = useState<any>(null);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -95,6 +101,12 @@ export default function SearchDetailPage() {
         setSuspicious(susp);
         if (s.mode === 'split') {
           fetchCombos(id).then(setCombos).catch(console.error);
+        }
+        if (s.destinationMode === 'flexible') {
+          fetchDestinations(id).then(setDestinationsData).catch(console.error);
+        }
+        if (s.windowMode) {
+          fetchWindows(id).then(setWindowsData).catch(console.error);
         }
       })
       .catch(console.error)
@@ -341,6 +353,50 @@ export default function SearchDetailPage() {
                 {combo.flightResultIds?.length ?? 0} vuelo(s) — {new Date(combo.createdAt).toLocaleString('es')}
               </div>
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Flexible destination ranking */}
+      {search.destinationMode === 'flexible' && (
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 24, marginBottom: 24 }}>
+          <h2 style={{ margin: '0 0 16px', fontSize: 16 }}>Destinos rankeados por precio</h2>
+          {!destinationsData && <div style={{ color: '#9ca3af' }}>Cargando...</div>}
+          {destinationsData?.destinations?.length === 0 && (
+            <div style={{ color: '#9ca3af' }}>No hay resultados todavía para ningún destino.</div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
+            {(destinationsData?.destinations ?? []).map((d: any) => (
+              <DestinationCard
+                key={d.iata}
+                iata={d.iata}
+                minPrice={d.minPrice}
+                currency={d.currency}
+                resultCount={d.resultCount}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Window mode results */}
+      {search.windowMode && (
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 24, marginBottom: 24 }}>
+          <h2 style={{ margin: '0 0 16px', fontSize: 16 }}>Ventanas posibles</h2>
+          {!windowsData && <div style={{ color: '#9ca3af' }}>Cargando...</div>}
+          {windowsData?.windows?.length === 0 && (
+            <div style={{ color: '#9ca3af' }}>No hay ventanas disponibles todavía.</div>
+          )}
+          {(windowsData?.windows ?? []).map((w: any, idx: number) => (
+            <WindowRow
+              key={`${w.start}-${w.end}-${idx}`}
+              start={w.start}
+              end={w.end}
+              duration={w.duration}
+              minPrice={w.minPrice}
+              currency={w.currency}
+              resultCount={w.resultCount}
+            />
           ))}
         </div>
       )}

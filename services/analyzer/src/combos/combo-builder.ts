@@ -12,9 +12,21 @@ export interface ComboScore {
 }
 
 /**
+ * Computes the per-leg top-N given a maxCombos cap and leg count.
+ * Returns the largest N such that N^legCount <= maxCombos (min 2).
+ */
+export function topNPerLeg(maxCombos: number, legCount: number): number {
+  if (legCount <= 0) return 2;
+  return Math.max(2, Math.floor(maxCombos ** (1 / legCount)));
+}
+
+/**
  * Generates all valid combinations (Cartesian product) of flight results per leg,
  * respecting temporal constraints: leg[i+1].outbound.departure must be after leg[i].outbound.departure.
- * Caps input at top N per leg by price (default 5) to limit combinations.
+ * Caps input at top N per leg by price.
+ *
+ * @param legResults - Array of flight results per leg.
+ * @param topN - How many cheapest results to keep per leg (default 5). Use topNPerLeg() to derive from maxCombos.
  */
 export function buildCombos(
   legResults: FlightResult[][],
