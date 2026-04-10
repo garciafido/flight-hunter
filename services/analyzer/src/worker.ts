@@ -1,0 +1,211 @@
+import type { Job } from 'bullmq';
+import type { PrismaClient } from '@flight-hunter/shared';
+import type { RawResultJob, SearchConfig, FlightResult } from '@flight-hunter/shared';
+import { normalizePricePerPerson } from '@flight-hunter/shared';
+import { ScoringEngine } from './scoring/engine.js';
+import { computePriceScore } from './scoring/price-score.js';
+import { computeScheduleScore } from './scoring/schedule-score.js';
+import { computeStopoverScore } from './scoring/stopover-score.js';
+import { computeAirlineScore } from './scoring/airline-score.js';
+import { FilterEngine } from './filters/filter-engine.js';
+import { DealDetector } from './detection/deal-detector.js';
+import { HistoryService } from './detection/history.js';
+import { Publisher } from './publisher.js';
+import { resolveWeights } from './scoring/weights.js';
+import { buildCombos, scoreCombo } from './combos/combo-builder.js';
+
+export interface AnalyzerDeps {
+  prisma: PrismaClient;
+  historyService: HistoryService;
+  filterEngine: FilterEngine;
+  dealDetector: DealDetector;
+  publisher: Publisher;
+}
+
+export class AnalyzerWorker {
+  private readonly scoringEngine: ScoringEngine;
+
+  constructor(private readonly deps: AnalyzerDeps) {
+    this.scoringEngine = new ScoringEngine(resolveWeights());
+  }
+
+  async process(job: Job<RawResultJob>): Promise<void> {
+    const data = job.data;
+
+    // Find the search config
+    const search = await this.deps.prisma.search.findUnique({
+      where: { id: data.searchId },
+    });
+
+    if (!search) {
+      throw new Error(`Search not found: ${data.searchId}`);
+    }
+
+    const searchConfig = search as unknown as SearchConfig;
+    const filters = searchConfig.filters;
+    const alertConfig = searchConfig.alertConfig;
+
+    const flight = {
+      ...data,
+      scrapedAt: new Date(data.scrapedAt),
+    };
+
+    // Filter
+    const filterResult = this.deps.filterEngine.apply(flight, filters);
+    if (!filterResult.passed) {
+      // Filtered out - still save but with no alert
+      const pricePerPerson = normalizePricePerPerson(
+        data.totalPrice,
+        data.pricePer,
+        data.passengers,
+      );
+      await this.deps.publisher.publish({
+        flight,
+        pricePerPerson,
+        score: 0,
+        scoreBreakdown: { price: 0, schedule: 0, stopover: 0, airline: 0, flexibility: 0 },
+        alertLevel: null,
+      });
+      return;
+    }
+
+    const pricePerPerson = normalizePricePerPerson(data.totalPrice, data.pricePer, data.passengers);
+
+    // Get history
+    const history = await this.deps.historyService.getPriceHistory(data.searchId);
+
+    // Score all components
+    const priceScore = computePriceScore(
+      pricePerPerson,
+      {
+        maxPricePerPerson: alertConfig.maxPricePerPerson,
+        targetPricePerPerson: alertConfig.targetPricePerPerson,
+        dreamPricePerPerson: alertConfig.dreamPricePerPerson,
+      },
+      history ?? undefined,
+    );
+
+    const scheduleScore = computeScheduleScore(data.outbound, data.inbound);
+
+    const stopoverScore = computeStopoverScore(data.stopover, searchConfig.stopover);
+
+    const airlineScore = computeAirlineScore(data.outbound.airline, data.inbound.airline, filters);
+
+    const flexibilityScore = 50; // hardcoded - no data from sources yet
+
+    const scoreResult = this.scoringEngine.compute([
+      { name: 'price', score: priceScore },
+      { name: 'schedule', score: scheduleScore },
+      { name: 'stopover', score: stopoverScore },
+      { name: 'airline', score: airlineScore },
+      { name: 'flexibility', score: flexibilityScore },
+    ]);
+
+    // Detect deal
+    const alertLevel = this.deps.dealDetector.detect(
+      scoreResult.total,
+      pricePerPerson,
+      alertConfig,
+      history ?? undefined,
+    );
+
+    // Publish
+    await this.deps.publisher.publish({
+      flight,
+      pricePerPerson,
+      score: scoreResult.total,
+      scoreBreakdown: scoreResult.breakdown,
+      alertLevel,
+    });
+
+    // For split-mode searches, evaluate combos after saving each leg result
+    const searchMode = (search as any).mode ?? 'roundtrip';
+    const searchLegs = (search as any).legs;
+    if (searchMode === 'split' && Array.isArray(searchLegs) && searchLegs.length > 0) {
+      await this.evaluateCombos(data.searchId, searchLegs.length, searchConfig, search as any);
+    }
+  }
+
+  private async evaluateCombos(
+    searchId: string,
+    legCount: number,
+    searchConfig: SearchConfig,
+    searchRecord: any,
+  ): Promise<void> {
+    const TOP_N = 5;
+
+    // Fetch top N cheapest results per leg
+    const legResultArrays: FlightResult[][] = [];
+    for (let i = 0; i < legCount; i++) {
+      const rows = await this.deps.prisma.flightResult.findMany({
+        where: { searchId, legIndex: i },
+        orderBy: { pricePerPerson: 'asc' },
+        take: TOP_N,
+      });
+
+      const results: FlightResult[] = rows.map((row: any) => ({
+        searchId: row.searchId,
+        source: row.source as FlightResult['source'],
+        outbound: row.outbound as FlightResult['outbound'],
+        inbound: row.inbound as FlightResult['inbound'],
+        stopover: row.stopoverInfo as FlightResult['stopover'] | undefined,
+        totalPrice: Number(row.pricePerPerson),
+        currency: row.currency,
+        pricePer: 'person' as const,
+        passengers: 1,
+        carryOnIncluded: row.carryOnIncluded,
+        bookingUrl: row.bookingUrl,
+        scrapedAt: row.scrapedAt,
+        proxyRegion: row.proxyRegion as FlightResult['proxyRegion'],
+        legIndex: row.legIndex,
+      }));
+
+      legResultArrays.push(results);
+    }
+
+    // Need results for all legs to build combos
+    if (legResultArrays.some((arr) => arr.length === 0)) return;
+
+    const combos = buildCombos(legResultArrays, TOP_N);
+    if (combos.length === 0) return;
+
+    // Score each combo and pick the best one
+    const scoredCombos = combos.map((combo) => ({
+      combo,
+      ...scoreCombo(combo, searchConfig),
+    }));
+
+    scoredCombos.sort((a, b) => b.score - a.score);
+    const best = scoredCombos[0];
+
+    const totalPrice = best.combo.reduce((sum, r) => sum + r.totalPrice, 0);
+    const currency = best.combo[0].currency;
+    const flightResultIds = best.combo.map((r: any) => r.id).filter(Boolean);
+
+    const alertConfig = searchConfig.alertConfig;
+    const alertLevel = this.deps.dealDetector.detect(
+      best.score,
+      totalPrice,
+      alertConfig,
+      undefined,
+    );
+
+    // Save the best combo to the FlightCombo table
+    try {
+      await (this.deps.prisma as any).flightCombo.create({
+        data: {
+          searchId,
+          flightResultIds,
+          totalPrice,
+          currency,
+          score: best.score,
+          scoreBreakdown: best.breakdown as object,
+          alertLevel: alertLevel ?? undefined,
+        },
+      });
+    } catch (err) {
+      // Non-fatal — combo saving should not break the main flow
+      console.error('Failed to save FlightCombo:', err instanceof Error ? err.message : err);
+    }
+  }
+}

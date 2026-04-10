@@ -1,0 +1,52 @@
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const search = await prisma.search.findUnique({ where: { id } });
+    if (!search) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json(search);
+  } catch (err) {
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const body = await request.json();
+    const data: any = {};
+    if (body.name !== undefined) data.name = body.name;
+    if (body.origin !== undefined) data.origin = body.origin;
+    if (body.destination !== undefined) data.destination = body.destination;
+    if (body.stopover !== undefined) data.stopover = body.stopover;
+    if (body.departureFrom !== undefined) data.departureFrom = new Date(body.departureFrom);
+    if (body.departureTo !== undefined) data.departureTo = new Date(body.departureTo);
+    if (body.returnMinDays !== undefined) data.returnMinDays = body.returnMinDays;
+    if (body.returnMaxDays !== undefined) data.returnMaxDays = body.returnMaxDays;
+    if (body.passengers !== undefined) data.passengers = body.passengers;
+    if (body.filters !== undefined) data.filters = body.filters;
+    if (body.alertConfig !== undefined) data.alertConfig = body.alertConfig;
+    if (body.proxyRegions !== undefined) data.proxyRegions = body.proxyRegions;
+    if (body.scanIntervalMin !== undefined) data.scanIntervalMin = body.scanIntervalMin;
+    if (body.active !== undefined) data.active = body.active;
+    if (body.mode !== undefined) data.mode = body.mode;
+    if (body.legs !== undefined) data.legs = body.legs;
+    const search = await prisma.search.update({ where: { id }, data });
+    return NextResponse.json(search);
+  } catch (err) {
+    console.error('PUT /api/searches/[id] error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    await prisma.search.update({ where: { id }, data: { active: false } });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

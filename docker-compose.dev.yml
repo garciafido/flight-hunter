@@ -1,0 +1,32 @@
+services:
+  scraper:
+    build:
+      target: dev
+    volumes:
+      - ./packages/shared/src:/app/packages/shared/src
+      - ./services/scraper/src:/app/services/scraper/src
+    command: pnpm --filter @flight-hunter/scraper dev
+
+  analyzer:
+    build:
+      target: dev
+    volumes:
+      - ./packages/shared/src:/app/packages/shared/src
+      - ./services/analyzer/src:/app/services/analyzer/src
+    command: pnpm --filter @flight-hunter/analyzer dev
+
+  notifier:
+    build:
+      target: dev
+    volumes:
+      - ./packages/shared/src:/app/packages/shared/src
+      - ./services/notifier/src:/app/services/notifier/src
+    command: pnpm --filter @flight-hunter/notifier dev
+
+  dashboard:
+    build:
+      target: dev
+    volumes:
+      - ./packages/shared/src:/app/packages/shared/src
+      - ./services/dashboard/src:/app/services/dashboard/src
+    command: pnpm --filter @flight-hunter/dashboard dev

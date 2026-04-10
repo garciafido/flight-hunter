@@ -1,0 +1,130 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Search {
+  id              String    @id @default(uuid()) @db.Uuid
+  name            String
+  origin          String
+  destination     String
+  stopover        Json?
+  departureFrom   DateTime  @map("departure_from") @db.Date
+  departureTo     DateTime  @map("departure_to") @db.Date
+  returnMinDays   Int       @map("return_min_days")
+  returnMaxDays   Int       @map("return_max_days")
+  passengers      Int
+  filters         Json
+  alertConfig     Json      @map("alert_config")
+  proxyRegions    String[]  @map("proxy_regions")
+  scanIntervalMin Int       @map("scan_interval_min")
+  active          Boolean   @default(true)
+  mode            String    @default("roundtrip")
+  legs            Json?
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  flightResults FlightResult[]
+  alerts        Alert[]
+  priceHistory  PriceHistory[]
+  flightCombos  FlightCombo[]
+
+  @@map("searches")
+}
+
+model FlightResult {
+  id             String   @id @default(uuid()) @db.Uuid
+  searchId       String   @map("search_id") @db.Uuid
+  source         String
+  outbound       Json
+  inbound        Json
+  stopoverInfo   Json?    @map("stopover_info")
+  pricePerPerson Decimal  @map("price_per_person") @db.Decimal(10, 2)
+  priceTotal     Decimal  @map("price_total") @db.Decimal(10, 2)
+  currency       String
+  carryOnIncluded Boolean @map("carry_on_included")
+  bookingUrl     String   @map("booking_url")
+  proxyRegion    String   @map("proxy_region")
+  score          Decimal? @db.Decimal(5, 2)
+  scoreBreakdown Json?    @map("score_breakdown")
+  alertLevel     String?  @map("alert_level")
+  legIndex       Int      @default(0) @map("leg_index")
+  scrapedAt      DateTime @map("scraped_at") @db.Timestamptz
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  search Search  @relation(fields: [searchId], references: [id])
+  alerts Alert[]
+
+  @@index([searchId, scrapedAt(sort: Desc)])
+  @@index([searchId, pricePerPerson])
+  @@index([searchId, legIndex])
+  @@map("flight_results")
+}
+
+model PriceHistory {
+  id          String   @id @default(uuid()) @db.Uuid
+  searchId    String   @map("search_id") @db.Uuid
+  date        DateTime @db.Date
+  minPrice    Decimal  @map("min_price") @db.Decimal(10, 2)
+  avgPrice    Decimal  @map("avg_price") @db.Decimal(10, 2)
+  maxPrice    Decimal  @map("max_price") @db.Decimal(10, 2)
+  bestScore   Decimal  @map("best_score") @db.Decimal(5, 2)
+  sampleCount Int      @map("sample_count")
+
+  search Search @relation(fields: [searchId], references: [id])
+
+  @@index([searchId, date])
+  @@map("price_history")
+}
+
+model Alert {
+  id             String   @id @default(uuid()) @db.Uuid
+  searchId       String   @map("search_id") @db.Uuid
+  flightResultId String   @map("flight_result_id") @db.Uuid
+  level          String
+  channelsSent   String[] @map("channels_sent")
+  sentAt         DateTime @map("sent_at") @db.Timestamptz
+
+  search       Search       @relation(fields: [searchId], references: [id])
+  flightResult FlightResult @relation(fields: [flightResultId], references: [id])
+
+  @@index([searchId, sentAt(sort: Desc)])
+  @@map("alerts")
+}
+
+model FlightCombo {
+  id              String   @id @default(uuid()) @db.Uuid
+  searchId        String   @map("search_id") @db.Uuid
+  flightResultIds String[] @map("flight_result_ids") @db.Uuid
+  totalPrice      Decimal  @map("total_price") @db.Decimal(10, 2)
+  currency        String
+  score           Decimal  @db.Decimal(5, 2)
+  scoreBreakdown  Json     @map("score_breakdown")
+  alertLevel      String?  @map("alert_level")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  search Search @relation(fields: [searchId], references: [id])
+
+  @@index([searchId, createdAt(sort: Desc)])
+  @@map("flight_combos")
+}
+
+model Proxy {
+  id         String    @id @default(uuid()) @db.Uuid
+  label      String
+  type       String
+  region     String
+  host       String
+  port       Int
+  auth       Json?
+  active     Boolean   @default(true)
+  lastCheck  DateTime? @map("last_check") @db.Timestamptz
+  lastStatus String?   @map("last_status")
+
+  @@map("proxies")
+}

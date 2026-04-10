@@ -1,0 +1,204 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { NotifierWorker } from '../../src/worker.js';
+import type { AlertJob } from '@flight-hunter/shared';
+
+const baseAlert: AlertJob = {
+  searchId: 'search-uuid-1',
+  flightResultId: 'result-uuid-1',
+  level: 'good',
+  score: 75,
+  scoreBreakdown: { price: 80, schedule: 70, stopover: 75, airline: 65, flexibility: 50 },
+  flightSummary: {
+    price: 350,
+    currency: 'USD',
+    airline: 'LATAM',
+    departureAirport: 'SCL',
+    arrivalAirport: 'MAD',
+    departureTime: '2026-06-01T10:00:00.000Z',
+    arrivalTime: '2026-06-20T10:00:00.000Z',
+    bookingUrl: 'https://booking.example.com/test',
+  },
+};
+
+function makeDeps(overrides: Partial<ReturnType<typeof makeDefaultDeps>> = {}) {
+  return { ...makeDefaultDeps(), ...overrides };
+}
+
+function makeDefaultDeps() {
+  return {
+    telegram: { send: vi.fn().mockResolvedValue(undefined) },
+    email: { send: vi.fn().mockResolvedValue(undefined) },
+    wsBroadcaster: { broadcast: vi.fn(), addClient: vi.fn(), removeClient: vi.fn() },
+    throttle: {
+      shouldSend: vi.fn().mockReturnValue(true),
+      record: vi.fn(),
+      recordFlight: vi.fn(),
+      isFlightDuplicate: vi.fn().mockReturnValue(false),
+    },
+    prisma: {
+      search: { findUnique: vi.fn().mockResolvedValue({ id: 'search-uuid-1', name: 'Test Search' }) },
+      alert: { create: vi.fn().mockResolvedValue({}) },
+    },
+  };
+}
+
+describe('NotifierWorker', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('skips processing if flight is a duplicate', async () => {
+    const deps = makeDeps({
+      throttle: {
+        ...makeDefaultDeps().throttle,
+        isFlightDuplicate: vi.fn().mockReturnValue(true),
+      },
+    });
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(baseAlert);
+
+    expect(deps.prisma.search.findUnique).not.toHaveBeenCalled();
+    expect(deps.prisma.alert.create).not.toHaveBeenCalled();
+  });
+
+  it('skips processing if search is not found', async () => {
+    const deps = makeDeps({
+      prisma: {
+        search: { findUnique: vi.fn().mockResolvedValue(null) },
+        alert: { create: vi.fn() },
+      },
+    });
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(baseAlert);
+
+    expect(deps.prisma.alert.create).not.toHaveBeenCalled();
+    expect(deps.wsBroadcaster.broadcast).not.toHaveBeenCalled();
+  });
+
+  it('sends via websocket for good level', async () => {
+    const deps = makeDeps();
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(baseAlert);
+
+    expect(deps.wsBroadcaster.broadcast).toHaveBeenCalled();
+  });
+
+  it('sends via email for good level', async () => {
+    const deps = makeDeps();
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(baseAlert);
+
+    expect(deps.email.send).toHaveBeenCalled();
+  });
+
+  it('does not send telegram for good level', async () => {
+    const deps = makeDeps();
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(baseAlert);
+
+    expect(deps.telegram.send).not.toHaveBeenCalled();
+  });
+
+  it('sends via all channels for urgent level', async () => {
+    const deps = makeDeps();
+    const alert: AlertJob = { ...baseAlert, level: 'urgent' };
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(alert);
+
+    expect(deps.wsBroadcaster.broadcast).toHaveBeenCalled();
+    expect(deps.email.send).toHaveBeenCalled();
+    expect(deps.telegram.send).toHaveBeenCalled();
+  });
+
+  it('sends only via websocket for info level', async () => {
+    const deps = makeDeps();
+    const alert: AlertJob = { ...baseAlert, level: 'info' };
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(alert);
+
+    expect(deps.wsBroadcaster.broadcast).toHaveBeenCalled();
+    expect(deps.email.send).not.toHaveBeenCalled();
+    expect(deps.telegram.send).not.toHaveBeenCalled();
+  });
+
+  it('skips channel when throttle returns false', async () => {
+    const deps = makeDeps({
+      throttle: {
+        ...makeDefaultDeps().throttle,
+        shouldSend: vi.fn().mockReturnValue(false),
+      },
+    });
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(baseAlert);
+
+    expect(deps.email.send).not.toHaveBeenCalled();
+    expect(deps.wsBroadcaster.broadcast).not.toHaveBeenCalled();
+  });
+
+  it('records throttle for each sent channel', async () => {
+    const deps = makeDeps();
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(baseAlert);
+
+    // good level: websocket + email
+    expect(deps.throttle.record).toHaveBeenCalledWith('search-uuid-1', 'websocket');
+    expect(deps.throttle.record).toHaveBeenCalledWith('search-uuid-1', 'email');
+  });
+
+  it('records flight fingerprint after processing', async () => {
+    const deps = makeDeps();
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(baseAlert);
+
+    expect(deps.throttle.recordFlight).toHaveBeenCalledOnce();
+  });
+
+  it('saves alert to database with correct data', async () => {
+    const deps = makeDeps();
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(baseAlert);
+
+    expect(deps.prisma.alert.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        searchId: 'search-uuid-1',
+        flightResultId: 'result-uuid-1',
+        level: 'good',
+        channelsSent: expect.arrayContaining(['websocket', 'email']),
+        sentAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it('saves alert with only channels that passed throttle', async () => {
+    const deps = makeDeps({
+      throttle: {
+        ...makeDefaultDeps().throttle,
+        shouldSend: vi.fn()
+          .mockReturnValueOnce(true)  // websocket passes
+          .mockReturnValueOnce(false), // email blocked
+      },
+    });
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(baseAlert);
+
+    expect(deps.prisma.alert.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        channelsSent: ['websocket'],
+      }),
+    });
+  });
+
+  it('records fingerprint even when all channels are throttled', async () => {
+    const deps = makeDeps({
+      throttle: {
+        ...makeDefaultDeps().throttle,
+        shouldSend: vi.fn().mockReturnValue(false),
+      },
+    });
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(baseAlert);
+
+    expect(deps.throttle.recordFlight).toHaveBeenCalledOnce();
+    expect(deps.prisma.alert.create).toHaveBeenCalled();
+  });
+});

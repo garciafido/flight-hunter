@@ -1,0 +1,84 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: flight_hunter
+      POSTGRES_USER: flight_hunter
+      POSTGRES_PASSWORD: flight_hunter_dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flight_hunter"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  scraper:
+    build:
+      context: .
+      dockerfile: services/scraper/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+
+  analyzer:
+    build:
+      context: .
+      dockerfile: services/analyzer/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+
+  notifier:
+    build:
+      context: .
+      dockerfile: services/notifier/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: services/dashboard/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    env_file: .env
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  pg_data:
