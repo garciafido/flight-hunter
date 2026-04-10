@@ -6,6 +6,7 @@ import type { Job } from 'bullmq';
 import { FilterEngine } from '../../src/filters/filter-engine.js';
 import { DealDetector } from '../../src/detection/deal-detector.js';
 import { HistoryService } from '../../src/detection/history.js';
+import { OutlierDetector } from '../../src/detection/outlier-detector.js';
 import { Publisher } from '../../src/publisher.js';
 import type { PrismaClient } from '@flight-hunter/shared';
 
@@ -47,6 +48,7 @@ describe('Analyzer E2E Flow', () => {
       flightResult: {
         create: vi.fn().mockResolvedValue({ id: 'result-1' }),
         aggregate: vi.fn().mockResolvedValue({ _avg: { pricePerPerson: null }, _min: { pricePerPerson: null } }),
+        findMany: vi.fn().mockResolvedValue([]),
       },
     } as unknown as PrismaClient;
 
@@ -61,6 +63,7 @@ describe('Analyzer E2E Flow', () => {
       filterEngine: new FilterEngine(),
       dealDetector: new DealDetector(),
       historyService: new HistoryService(mockPrisma),
+      outlierDetector: new OutlierDetector(mockPrisma),
       publisher: new Publisher(mockAlertQueue as any, mockPrisma),
       prisma: mockPrisma,
     };
@@ -145,6 +148,7 @@ describe('Analyzer E2E Flow', () => {
       flightResult: {
         create: vi.fn().mockResolvedValue({ id: 'result-1' }),
         aggregate: vi.fn().mockResolvedValue({ _avg: { pricePerPerson: null }, _min: { pricePerPerson: null } }),
+        findMany: vi.fn().mockResolvedValue([]),
       },
     } as unknown as PrismaClient;
 
@@ -154,6 +158,7 @@ describe('Analyzer E2E Flow', () => {
       filterEngine: new FilterEngine(),
       dealDetector: new DealDetector(),
       historyService: new HistoryService(mockPrisma),
+      outlierDetector: new OutlierDetector(mockPrisma),
       publisher: new Publisher(mockQueue as any, mockPrisma),
       prisma: mockPrisma,
     };

@@ -22,7 +22,7 @@ export interface StopoverInfo {
   leg?: StopoverResultLeg;
 }
 
-export type FlightSource = 'kiwi' | 'skyscanner' | 'google-flights' | 'amadeus';
+export type FlightSource = 'kiwi' | 'skyscanner' | 'google-flights' | 'amadeus' | 'travelpayouts' | 'duffel';
 export type ProxyRegion = 'CL' | 'AR';
 
 export interface FlightResult {
@@ -40,4 +40,12 @@ export interface FlightResult {
   scrapedAt: Date;
   proxyRegion: ProxyRegion;
   legIndex?: number; // optional; 0 for roundtrip (default), leg index for split mode
+  // Currency fields (populated by scraper after currency conversion)
+  priceOriginal?: number;
+  currencyOriginal?: string;
+  priceUsd?: number;
+  exchangeRateAt?: Date;
+  // Outlier detection (populated by analyzer)
+  suspicious?: boolean;
+  suspicionReason?: string;
 }

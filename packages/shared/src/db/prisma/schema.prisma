@@ -38,24 +38,30 @@ model Search {
 }
 
 model FlightResult {
-  id             String   @id @default(uuid()) @db.Uuid
-  searchId       String   @map("search_id") @db.Uuid
-  source         String
-  outbound       Json
-  inbound        Json
-  stopoverInfo   Json?    @map("stopover_info")
-  pricePerPerson Decimal  @map("price_per_person") @db.Decimal(10, 2)
-  priceTotal     Decimal  @map("price_total") @db.Decimal(10, 2)
-  currency       String
-  carryOnIncluded Boolean @map("carry_on_included")
-  bookingUrl     String   @map("booking_url")
-  proxyRegion    String   @map("proxy_region")
-  score          Decimal? @db.Decimal(5, 2)
-  scoreBreakdown Json?    @map("score_breakdown")
-  alertLevel     String?  @map("alert_level")
-  legIndex       Int      @default(0) @map("leg_index")
-  scrapedAt      DateTime @map("scraped_at") @db.Timestamptz
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id                  String    @id @default(uuid()) @db.Uuid
+  searchId            String    @map("search_id") @db.Uuid
+  source              String
+  outbound            Json
+  inbound             Json
+  stopoverInfo        Json?     @map("stopover_info")
+  pricePerPerson      Decimal   @map("price_per_person") @db.Decimal(10, 2)
+  priceTotal          Decimal   @map("price_total") @db.Decimal(10, 2)
+  currency            String
+  priceOriginal       Decimal   @default(0) @map("price_original") @db.Decimal(10, 2)
+  currencyOriginal    String    @default("USD") @map("currency_original")
+  priceUsd            Decimal   @default(0) @map("price_usd") @db.Decimal(10, 2)
+  exchangeRateAt      DateTime? @map("exchange_rate_at") @db.Timestamptz
+  suspicious          Boolean   @default(false)
+  suspicionReason     String?   @map("suspicion_reason")
+  carryOnIncluded     Boolean   @map("carry_on_included")
+  bookingUrl          String    @map("booking_url")
+  proxyRegion         String    @map("proxy_region")
+  score               Decimal?  @db.Decimal(5, 2)
+  scoreBreakdown      Json?     @map("score_breakdown")
+  alertLevel          String?   @map("alert_level")
+  legIndex            Int       @default(0) @map("leg_index")
+  scrapedAt           DateTime  @map("scraped_at") @db.Timestamptz
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
   search Search  @relation(fields: [searchId], references: [id])
   alerts Alert[]
@@ -127,4 +133,45 @@ model Proxy {
   lastStatus String?   @map("last_status")
 
   @@map("proxies")
+}
+
+model Source {
+  id                  String    @id @default(uuid()) @db.Uuid
+  name                String    @unique
+  enabled             Boolean   @default(true)
+  hasApiKey           Boolean   @default(false) @map("has_api_key")
+  circuitState        String    @default("closed") @map("circuit_state")
+  circuitOpenedAt     DateTime? @map("circuit_opened_at") @db.Timestamptz
+  consecutiveFailures Int       @default(0) @map("consecutive_failures")
+  lastSuccessAt       DateTime? @map("last_success_at") @db.Timestamptz
+  lastFailureAt       DateTime? @map("last_failure_at") @db.Timestamptz
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  metrics SourceMetric[]
+
+  @@map("sources")
+}
+
+model SourceMetric {
+  id          String   @id @default(uuid()) @db.Uuid
+  sourceId    String   @map("source_id") @db.Uuid
+  timestamp   DateTime @default(now()) @db.Timestamptz
+  success     Boolean
+  resultCount Int      @default(0) @map("result_count")
+  durationMs  Int      @map("duration_ms")
+  errorType   String?  @map("error_type")
+
+  source Source @relation(fields: [sourceId], references: [id])
+
+  @@index([sourceId, timestamp(sort: Desc)])
+  @@map("source_metrics")
+}
+
+model SystemSettings {
+  id           String   @id @default("singleton")
+  emailsPaused Boolean  @default(false) @map("emails_paused")
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("system_settings")
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NotifierWorker } from '../../src/worker.js';
+import { injectSettingsCache, resetSettingsCache } from '../../src/settings-cache.js';
 import type { AlertJob } from '@flight-hunter/shared';
 
 const baseAlert: AlertJob = {
@@ -45,6 +46,7 @@ function makeDefaultDeps() {
 describe('NotifierWorker', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetSettingsCache();
   });
 
   it('skips processing if flight is a duplicate', async () => {
@@ -200,5 +202,27 @@ describe('NotifierWorker', () => {
 
     expect(deps.throttle.recordFlight).toHaveBeenCalledOnce();
     expect(deps.prisma.alert.create).toHaveBeenCalled();
+  });
+
+  it('skips email channel when emailsPaused is true', async () => {
+    injectSettingsCache(true);
+    const deps = makeDeps();
+    const worker = new NotifierWorker(deps as never);
+    await worker.process({ ...baseAlert, level: 'urgent' });
+
+    // Email should NOT be sent when paused
+    expect(deps.email.send).not.toHaveBeenCalled();
+    // But other channels (telegram, websocket) should still work
+    expect(deps.telegram.send).toHaveBeenCalled();
+  });
+
+  it('sends email when emailsPaused is false', async () => {
+    injectSettingsCache(false);
+    const deps = makeDeps();
+    const worker = new NotifierWorker(deps as never);
+    await worker.process({ ...baseAlert, level: 'urgent' });
+
+    // Email should be sent when not paused
+    expect(deps.email.send).toHaveBeenCalled();
   });
 });

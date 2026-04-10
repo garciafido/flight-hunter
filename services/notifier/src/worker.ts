@@ -8,6 +8,7 @@ import { formatTelegram } from './formatter/telegram-fmt.js';
 import { formatEmail } from './formatter/email-fmt.js';
 import { formatWebSocket } from './formatter/ws-fmt.js';
 import { getChannelsForLevel } from './rules.js';
+import { isEmailsPaused } from './settings-cache.js';
 
 export interface NotifierDeps {
   telegram: TelegramChannel;
@@ -52,8 +53,16 @@ export class NotifierWorker {
     const channels = getChannelsForLevel(alert.level);
     const channelsSent: string[] = [];
 
+    // Check if emails are globally paused (30s in-memory cache)
+    const emailsPaused = await isEmailsPaused(this.deps.prisma);
+
     for (const channel of channels) {
       if (!this.deps.throttle.shouldSend(alert.searchId, channel, alert.level)) {
+        continue;
+      }
+
+      // Skip email channel if globally paused; telegram and websocket still fire
+      if (channel === 'email' && emailsPaused) {
         continue;
       }
 

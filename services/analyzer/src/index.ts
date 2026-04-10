@@ -8,6 +8,7 @@ import { AnalyzerWorker } from './worker.js';
 import { FilterEngine } from './filters/filter-engine.js';
 import { DealDetector } from './detection/deal-detector.js';
 import { HistoryService } from './detection/history.js';
+import { OutlierDetector } from './detection/outlier-detector.js';
 import { Publisher } from './publisher.js';
 
 const redis = new Redis({
@@ -25,6 +26,7 @@ const alertQueue = new Queue(QUEUE_NAMES.ALERTS, { connection: redis });
 const filterEngine = new FilterEngine();
 const dealDetector = new DealDetector();
 const historyService = new HistoryService(prisma);
+const outlierDetector = new OutlierDetector(prisma);
 const publisher = new Publisher(alertQueue, prisma);
 
 const analyzerWorker = new AnalyzerWorker({
@@ -32,6 +34,7 @@ const analyzerWorker = new AnalyzerWorker({
   historyService,
   filterEngine,
   dealDetector,
+  outlierDetector,
   publisher,
 });
 

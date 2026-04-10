@@ -34,7 +34,10 @@ export class SearchJobProcessor {
           const results = await source.search(config, proxyUrl);
           console.log(`  Source ${source.name}: ${results.length} result(s)`);
           for (const result of results) {
-            await this.rawResultsQueue.add(QUEUE_NAMES.RAW_RESULTS, result);
+            await this.rawResultsQueue.add(QUEUE_NAMES.RAW_RESULTS, result, {
+              attempts: 3,
+              backoff: { type: 'exponential', delay: 1000 },
+            });
           }
         } catch (err) {
           console.error(`  Source ${source.name} failed:`, err instanceof Error ? err.message : err);
@@ -64,7 +67,10 @@ export class SearchJobProcessor {
             const results = await source.searchOneWay(config, legIndex, leg, proxyUrl);
             console.log(`  Source ${source.name} leg ${legIndex}: ${results.length} result(s)`);
             for (const result of results) {
-              await this.rawResultsQueue.add(QUEUE_NAMES.RAW_RESULTS, result);
+              await this.rawResultsQueue.add(QUEUE_NAMES.RAW_RESULTS, result, {
+                attempts: 3,
+                backoff: { type: 'exponential', delay: 1000 },
+              });
             }
           } catch (err) {
             console.error(`  Source ${source.name} leg ${legIndex} failed:`, err instanceof Error ? err.message : err);

@@ -70,8 +70,8 @@ describe('Scraper E2E Flow', () => {
     expect(mockVpnRouter.getProxyUrl).toHaveBeenCalledWith('CL');
     expect(mockVpnRouter.getProxyUrl).toHaveBeenCalledWith('AR');
 
-    // Verify queue was called with the correct queue name
-    expect(mockQueue.add).toHaveBeenCalledWith(QUEUE_NAMES.RAW_RESULTS, expect.any(Object));
+    // Verify queue was called with the correct queue name (retry options are now included)
+    expect(mockQueue.add).toHaveBeenCalledWith(QUEUE_NAMES.RAW_RESULTS, expect.any(Object), expect.any(Object));
   });
 
   it('continues when a source fails for one region', async () => {

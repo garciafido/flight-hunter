@@ -12,6 +12,7 @@ export class HistoryService {
       where: {
         searchId,
         scrapedAt: { gte: cutoff },
+        suspicious: false, // exclude flagged outliers from history
       },
       _avg: { pricePerPerson: true },
       _min: { pricePerPerson: true },

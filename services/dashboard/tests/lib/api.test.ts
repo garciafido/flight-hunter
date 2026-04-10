@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   fetchSearches, fetchSearch, createSearch, updateSearch, deleteSearch,
   fetchResults, fetchAlerts, fetchProxies, createProxy, fetchSystemStatus,
+  fetchSystemSettings, updateSystemSettings, promoteResult,
 } from '@/lib/api';
 
 function mockFetch(ok: boolean, data: any) {
@@ -168,5 +169,46 @@ describe('fetchSystemStatus', () => {
   it('throws on failure', async () => {
     global.fetch = mockFetch(false, {});
     await expect(fetchSystemStatus()).rejects.toThrow('Failed to fetch system status');
+  });
+});
+
+describe('fetchSystemSettings', () => {
+  it('returns settings data', async () => {
+    global.fetch = mockFetch(true, { emailsPaused: false });
+    const result = await fetchSystemSettings();
+    expect(fetch).toHaveBeenCalledWith('/api/system/settings');
+    expect(result).toEqual({ emailsPaused: false });
+  });
+  it('throws on failure', async () => {
+    global.fetch = mockFetch(false, {});
+    await expect(fetchSystemSettings()).rejects.toThrow('Failed to fetch system settings');
+  });
+});
+
+describe('updateSystemSettings', () => {
+  it('sends PUT request with settings', async () => {
+    global.fetch = mockFetch(true, { emailsPaused: true });
+    const result = await updateSystemSettings({ emailsPaused: true });
+    expect(result).toEqual({ emailsPaused: true });
+    const call = vi.mocked(fetch).mock.calls[0];
+    expect(call[0]).toBe('/api/system/settings');
+    expect((call[1] as RequestInit).method).toBe('PUT');
+  });
+  it('throws on failure', async () => {
+    global.fetch = mockFetch(false, {});
+    await expect(updateSystemSettings({ emailsPaused: true })).rejects.toThrow('Failed to update system settings');
+  });
+});
+
+describe('promoteResult', () => {
+  it('sends POST request to promote endpoint', async () => {
+    global.fetch = mockFetch(true, { success: true });
+    const result = await promoteResult('result-123');
+    expect(fetch).toHaveBeenCalledWith('/api/results/result-123/promote', { method: 'POST' });
+    expect(result).toEqual({ success: true });
+  });
+  it('throws on failure', async () => {
+    global.fetch = mockFetch(false, {});
+    await expect(promoteResult('result-123')).rejects.toThrow('Failed to promote result');
   });
 });

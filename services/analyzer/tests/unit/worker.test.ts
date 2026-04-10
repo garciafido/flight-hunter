@@ -7,6 +7,7 @@ import type { Job } from 'bullmq';
 import { FilterEngine } from '../../src/filters/filter-engine.js';
 import { DealDetector } from '../../src/detection/deal-detector.js';
 import { HistoryService } from '../../src/detection/history.js';
+import { OutlierDetector } from '../../src/detection/outlier-detector.js';
 import { Publisher } from '../../src/publisher.js';
 
 function makeRawJob(overrides: Partial<RawResultJob> = {}): Job<RawResultJob> {
@@ -77,6 +78,7 @@ function makeDeps(searchRecord: object | null = makeSearchRecord()): AnalyzerDep
     },
     flightResult: {
       create: vi.fn().mockResolvedValue({ id: 'result-1' }),
+      findMany: vi.fn().mockResolvedValue([]),
     },
   } as unknown as PrismaClient;
 
@@ -86,12 +88,13 @@ function makeDeps(searchRecord: object | null = makeSearchRecord()): AnalyzerDep
 
   const filterEngine = new FilterEngine();
   const dealDetector = new DealDetector();
+  const outlierDetector = new OutlierDetector(prisma);
 
   const publisher = {
     publish: vi.fn().mockResolvedValue(undefined),
   } as unknown as Publisher;
 
-  return { prisma, historyService, filterEngine, dealDetector, publisher };
+  return { prisma, historyService, filterEngine, dealDetector, outlierDetector, publisher };
 }
 
 describe('AnalyzerWorker', () => {

@@ -7,9 +7,12 @@ import { KiwiSource } from './sources/kiwi.js';
 import { SkyscannerSource } from './sources/skyscanner.js';
 import { GoogleFlightsSource } from './sources/google-flights.js';
 import { AmadeusSource } from './sources/amadeus.js';
+import { TravelpayoutsSource } from './sources/travelpayouts.js';
+import { DuffelSource } from './sources/duffel.js';
 import { VpnRouter } from './proxy/vpn-router.js';
 import { SearchJobProcessor } from './jobs/search-job.js';
 import { Scheduler } from './scheduler.js';
+import { seedSources } from './resilience/seed-sources.js';
 
 const redis = new Redis({
   host: process.env.REDIS_HOST ?? 'localhost',
@@ -30,11 +33,13 @@ const amadeusSource = new AmadeusSource(
   process.env.AMADEUS_API_KEY ?? '',
   process.env.AMADEUS_API_SECRET ?? '',
 );
+const travelpayoutsSource = new TravelpayoutsSource(process.env.TRAVELPAYOUTS_TOKEN ?? '');
+const duffelSource = new DuffelSource(process.env.DUFFEL_API_TOKEN ?? '');
 
 const vpnRouter = new VpnRouter(prisma);
 
 const jobProcessor = new SearchJobProcessor(
-  [amadeusSource, kiwiSource, skyscannerSource, googleFlightsSource],
+  [amadeusSource, kiwiSource, skyscannerSource, googleFlightsSource, travelpayoutsSource, duffelSource],
   vpnRouter,
   rawResultsQueue,
 );
@@ -42,6 +47,13 @@ const jobProcessor = new SearchJobProcessor(
 const scheduler = new Scheduler(prisma, jobProcessor);
 
 const intervalMs = parseInt(process.env.SCAN_INTERVAL_MS ?? '300000', 10);
-scheduler.start(intervalMs);
 
-console.log('Scraper service started');
+// Seed sources on boot (no-op if already seeded)
+seedSources(prisma).then(() => {
+  scheduler.start(intervalMs);
+  console.log('Scraper service started');
+}).catch((err) => {
+  console.error('Seed failed, starting anyway:', err);
+  scheduler.start(intervalMs);
+  console.log('Scraper service started');
+});

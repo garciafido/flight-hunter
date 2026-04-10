@@ -274,3 +274,151 @@ export function normalizeSkyscannerResult(
     proxyRegion,
   };
 }
+
+// ─── Travelpayouts ────────────────────────────────────────────────────────────
+
+export interface TravelpayoutsData {
+  value: number;
+  trip_class: number;
+  show_to_affiliates: boolean;
+  return_date: string;
+  origin: string;
+  destination: string;
+  depart_date: string;
+  number_of_changes: number;
+  gate: string;
+  found_at: string;
+  duration: number; // total trip duration in minutes
+  distance: number;
+  actual: boolean;
+}
+
+export function normalizeTravelpayoutsResult(
+  data: TravelpayoutsData,
+  currency: string,
+  searchId: string,
+  passengers: number,
+  proxyRegion: ProxyRegion,
+): FlightResult {
+  // Travelpayouts /v2/prices/latest doesn't give per-segment times.
+  // We use depart_date and return_date as approximate times (midnight UTC).
+  const departureTime = `${data.depart_date}T00:00:00.000Z`;
+  const returnTime = `${data.return_date}T00:00:00.000Z`;
+
+  const airline = data.gate ?? 'Unknown';
+
+  const outbound: FlightLeg = {
+    departure: { airport: data.origin, time: departureTime },
+    arrival: { airport: data.destination, time: departureTime },
+    airline,
+    flightNumber: '',
+    durationMinutes: Math.round(data.duration / 2), // approximate: half of round-trip
+    stops: data.number_of_changes,
+  };
+
+  const inbound: FlightLeg = {
+    departure: { airport: data.destination, time: returnTime },
+    arrival: { airport: data.origin, time: returnTime },
+    airline,
+    flightNumber: '',
+    durationMinutes: Math.round(data.duration / 2),
+    stops: data.number_of_changes,
+  };
+
+  const normalizedCurrency = currency.toUpperCase();
+
+  return {
+    searchId,
+    source: 'travelpayouts',
+    outbound,
+    inbound,
+    totalPrice: data.value,
+    currency: normalizedCurrency,
+    pricePer: 'total',
+    passengers,
+    carryOnIncluded: false,
+    bookingUrl: `https://www.aviasales.com/search/${data.origin}${data.depart_date.replace(/-/g, '')}${data.destination}${data.return_date.replace(/-/g, '')}1`,
+    scrapedAt: new Date(),
+    proxyRegion,
+    priceOriginal: data.value,
+    currencyOriginal: normalizedCurrency,
+  };
+}
+
+// ─── Duffel ───────────────────────────────────────────────────────────────────
+
+export interface DuffelSegment {
+  departing_at: string;
+  arriving_at: string;
+  origin: { iata_code: string };
+  destination: { iata_code: string };
+  operating_carrier: { iata_code: string };
+  operating_carrier_flight_number: string;
+  duration: string; // ISO 8601 e.g. "PT5H30M"
+}
+
+export interface DuffelSlice {
+  duration: string;
+  origin: { iata_code: string };
+  destination: { iata_code: string };
+  segments: DuffelSegment[];
+}
+
+export interface DuffelOffer {
+  id: string;
+  total_amount: string;
+  total_currency: string;
+  slices: DuffelSlice[];
+}
+
+function parseDuffelDuration(iso: string): number {
+  const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
+  if (!match) return 0;
+  return (parseInt(match[1] ?? '0', 10) * 60) + parseInt(match[2] ?? '0', 10);
+}
+
+export function normalizeDuffelResult(
+  offer: DuffelOffer,
+  searchId: string,
+  passengers: number,
+  proxyRegion: ProxyRegion,
+): FlightResult {
+  const outSlice = offer.slices[0];
+  const inSlice = offer.slices[1];
+
+  function sliceToLeg(slice: DuffelSlice): FlightLeg {
+    const first = slice.segments[0];
+    const last = slice.segments[slice.segments.length - 1];
+    return {
+      departure: { airport: first.origin.iata_code, time: first.departing_at },
+      arrival: { airport: last.destination.iata_code, time: last.arriving_at },
+      airline: first.operating_carrier.iata_code,
+      flightNumber: `${first.operating_carrier.iata_code}${first.operating_carrier_flight_number}`,
+      durationMinutes: parseDuffelDuration(slice.duration),
+      stops: Math.max(0, slice.segments.length - 1),
+    };
+  }
+
+  const outbound = sliceToLeg(outSlice);
+  const inbound = sliceToLeg(inSlice);
+
+  const currency = offer.total_currency.toUpperCase();
+  const totalPrice = parseFloat(offer.total_amount);
+
+  return {
+    searchId,
+    source: 'duffel',
+    outbound,
+    inbound,
+    totalPrice,
+    currency,
+    pricePer: 'total',
+    passengers,
+    carryOnIncluded: false,
+    bookingUrl: `https://app.duffel.com/search/${offer.id}`,
+    scrapedAt: new Date(),
+    proxyRegion,
+    priceOriginal: totalPrice,
+    currencyOriginal: currency,
+  };
+}

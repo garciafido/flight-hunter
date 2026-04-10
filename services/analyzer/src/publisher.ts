@@ -9,6 +9,8 @@ export interface PublishPayload {
   score: number;
   scoreBreakdown: ScoreBreakdown;
   alertLevel: AlertLevel | null;
+  suspicious?: boolean;
+  suspicionReason?: string;
 }
 
 export class Publisher {
@@ -18,10 +20,12 @@ export class Publisher {
   ) {}
 
   async publish(payload: PublishPayload): Promise<void> {
-    const { flight, pricePerPerson, score, scoreBreakdown, alertLevel } = payload;
+    const { flight, pricePerPerson, score, scoreBreakdown, alertLevel, suspicious, suspicionReason } = payload;
 
     const priceTotal =
       flight.pricePer === 'total' ? flight.totalPrice : flight.totalPrice * flight.passengers;
+
+    const isSuspicious = suspicious ?? false;
 
     const saved = await this.prisma.flightResult.create({
       data: {
@@ -33,6 +37,12 @@ export class Publisher {
         pricePerPerson,
         priceTotal,
         currency: flight.currency,
+        priceOriginal: flight.priceOriginal ?? priceTotal,
+        currencyOriginal: flight.currencyOriginal ?? flight.currency,
+        priceUsd: flight.priceUsd ?? priceTotal,
+        exchangeRateAt: flight.exchangeRateAt ?? null,
+        suspicious: isSuspicious,
+        suspicionReason: suspicionReason ?? null,
         carryOnIncluded: flight.carryOnIncluded,
         bookingUrl: flight.bookingUrl,
         proxyRegion: flight.proxyRegion,
@@ -44,7 +54,8 @@ export class Publisher {
       },
     });
 
-    if (alertLevel) {
+    // Suspicious flights do not trigger alerts
+    if (alertLevel && !isSuspicious) {
       const alertJob: AlertJob = {
         searchId: flight.searchId,
         flightResultId: saved.id,

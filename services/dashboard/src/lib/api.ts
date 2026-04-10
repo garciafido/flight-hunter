@@ -91,3 +91,27 @@ export async function fetchCombos(searchId: string): Promise<any[]> {
   if (!res.ok) throw new Error('Failed to fetch combos');
   return res.json();
 }
+
+export async function fetchSystemSettings(): Promise<{ emailsPaused: boolean }> {
+  const res = await fetch(`${BASE}/system/settings`);
+  if (!res.ok) throw new Error('Failed to fetch system settings');
+  return res.json();
+}
+
+export async function updateSystemSettings(data: { emailsPaused: boolean }): Promise<{ emailsPaused: boolean }> {
+  const res = await fetch(`${BASE}/system/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to update system settings');
+  return res.json();
+}
+
+export async function promoteResult(resultId: string): Promise<any> {
+  const res = await fetch(`${BASE}/results/${resultId}/promote`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Failed to promote result');
+  return res.json();
+}

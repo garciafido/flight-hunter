@@ -125,8 +125,8 @@ describe('SearchJobProcessor', () => {
     await processor.execute(makeConfig({ proxyRegions: ['CL'] }));
 
     expect(queue.add).toHaveBeenCalledTimes(2);
-    expect(queue.add).toHaveBeenCalledWith(QUEUE_NAMES.RAW_RESULTS, result1);
-    expect(queue.add).toHaveBeenCalledWith(QUEUE_NAMES.RAW_RESULTS, result2);
+    expect(queue.add).toHaveBeenCalledWith(QUEUE_NAMES.RAW_RESULTS, result1, expect.any(Object));
+    expect(queue.add).toHaveBeenCalledWith(QUEUE_NAMES.RAW_RESULTS, result2, expect.any(Object));
   });
 
   it('continues with other sources if one throws', async () => {

@@ -10,6 +10,7 @@ import { computeAirlineScore } from './scoring/airline-score.js';
 import { FilterEngine } from './filters/filter-engine.js';
 import { DealDetector } from './detection/deal-detector.js';
 import { HistoryService } from './detection/history.js';
+import { OutlierDetector } from './detection/outlier-detector.js';
 import { Publisher } from './publisher.js';
 import { resolveWeights } from './scoring/weights.js';
 import { buildCombos, scoreCombo } from './combos/combo-builder.js';
@@ -19,6 +20,7 @@ export interface AnalyzerDeps {
   historyService: HistoryService;
   filterEngine: FilterEngine;
   dealDetector: DealDetector;
+  outlierDetector: OutlierDetector;
   publisher: Publisher;
 }
 
@@ -109,6 +111,14 @@ export class AnalyzerWorker {
       history ?? undefined,
     );
 
+    // Outlier detection
+    const outlier = await this.deps.outlierDetector.check(
+      data.searchId,
+      pricePerPerson,
+      data.source,
+      history?.avg48h ?? null,
+    );
+
     // Publish
     await this.deps.publisher.publish({
       flight,
@@ -116,6 +126,8 @@ export class AnalyzerWorker {
       score: scoreResult.total,
       scoreBreakdown: scoreResult.breakdown,
       alertLevel,
+      suspicious: outlier.suspicious,
+      suspicionReason: outlier.suspicionReason,
     });
 
     // For split-mode searches, evaluate combos after saving each leg result

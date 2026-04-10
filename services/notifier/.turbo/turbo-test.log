@@ -1,0 +1,24 @@
+
+> @flight-hunter/notifier@0.0.1 test /Users/fido/Documents/Developments/flight-hunter/services/notifier
+> vitest run
+
+
+ RUN  v3.2.4 /Users/fido/Documents/Developments/flight-hunter/services/notifier
+
+ ✓ tests/unit/settings-cache.test.ts (7 tests) 10ms
+ ✓ tests/unit/formatter/telegram-fmt.test.ts (17 tests) 6ms
+ ✓ tests/unit/channels/telegram.test.ts (2 tests) 5ms
+ ✓ tests/unit/channels/email.test.ts (3 tests) 7ms
+ ✓ tests/unit/formatter/email-fmt.test.ts (19 tests) 6ms
+ ✓ tests/unit/throttle.test.ts (9 tests) 12ms
+ ✓ tests/unit/worker.test.ts (15 tests) 18ms
+ ✓ tests/unit/formatter/ws-fmt.test.ts (8 tests) 5ms
+ ✓ tests/unit/rules.test.ts (5 tests) 5ms
+ ✓ tests/e2e/notifier-flow.test.ts (3 tests) 8ms
+ ✓ tests/unit/channels/websocket.test.ts (5 tests) 90ms
+
+ Test Files  11 passed (11)
+      Tests  93 passed (93)
+   Start at  11:34:26
+   Duration  3.14s (transform 1.05s, setup 0ms, collect 2.93s, tests 174ms, environment 3ms, prepare 5.49s)
+

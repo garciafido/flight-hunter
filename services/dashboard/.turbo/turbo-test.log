@@ -1,0 +1,21 @@
+
+> @flight-hunter/dashboard@0.0.1 test /Users/fido/Documents/Developments/flight-hunter/services/dashboard
+> vitest run
+
+
+ RUN  v3.2.4 /Users/fido/Documents/Developments/flight-hunter/services/dashboard
+
+ ✓ tests/lib/ws.test.ts (4 tests) 8ms
+ ✓ tests/lib/api.test.ts (28 tests) 40ms
+ ✓ tests/components/alert-badge.test.tsx (5 tests) 116ms
+ ✓ tests/components/price-chart.test.tsx (4 tests) 60ms
+ ✓ tests/components/score-bar.test.tsx (7 tests) 104ms
+ ✓ tests/components/flight-card.test.tsx (9 tests) 220ms
+ ↓ tests/e2e/dashboard-flow.test.ts (3 tests | 3 skipped)
+ ✓ tests/components/search-form.test.tsx (10 tests) 856ms
+
+ Test Files  7 passed | 1 skipped (8)
+      Tests  67 passed | 3 todo (70)
+   Start at  11:34:26
+   Duration  5.73s (transform 280ms, setup 0ms, collect 1.56s, tests 1.40s, environment 26.25s, prepare 3.32s)
+

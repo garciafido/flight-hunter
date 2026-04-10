@@ -24,7 +24,7 @@ const StopoverInfoSchema = z.object({
 
 export const RawResultJobSchema = z.object({
   searchId: z.string(),
-  source: z.enum(['kiwi', 'skyscanner', 'google-flights', 'amadeus']),
+  source: z.enum(['kiwi', 'skyscanner', 'google-flights', 'amadeus', 'travelpayouts', 'duffel']),
   outbound: FlightLegSchema,
   inbound: FlightLegSchema,
   stopover: StopoverInfoSchema.optional(),
@@ -37,6 +37,11 @@ export const RawResultJobSchema = z.object({
   scrapedAt: z.string().datetime(),
   proxyRegion: z.enum(['CL', 'AR']),
   legIndex: z.number().int().min(0).default(0),
+  // Currency conversion fields (optional; populated after exchange rate lookup)
+  priceOriginal: z.number().optional(),
+  currencyOriginal: z.string().length(3).optional(),
+  priceUsd: z.number().optional(),
+  exchangeRateAt: z.string().datetime().optional(),
 });
 
 export type RawResultJob = z.infer<typeof RawResultJobSchema>;
