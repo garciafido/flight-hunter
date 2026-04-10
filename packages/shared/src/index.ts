@@ -7,5 +7,6 @@ export * from './queue/names.js';
 export * from './queue/schemas.js';
 export * from './utils/currency.js';
 export * from './utils/region-presets.js';
+export * from './utils/logger.js';
 export { PrismaClient, Prisma } from './generated/prisma/client.js';
 export type { PrismaClient as PrismaClientType } from './generated/prisma/client.js';

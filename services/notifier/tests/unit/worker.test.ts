@@ -40,6 +40,10 @@ function makeDefaultDeps() {
       search: { findUnique: vi.fn().mockResolvedValue({ id: 'search-uuid-1', name: 'Test Search' }) },
       alert: { create: vi.fn().mockResolvedValue({}) },
     },
+    // Disable new optional channels by default (null = explicitly disabled)
+    webhook: null,
+    slack: null,
+    discord: null,
   };
 }
 
@@ -224,5 +228,88 @@ describe('NotifierWorker', () => {
 
     // Email should be sent when not paused
     expect(deps.email.send).toHaveBeenCalled();
+  });
+
+  it('sends to webhook channel when provided', async () => {
+    const webhookSend = vi.fn().mockResolvedValue(undefined);
+    const deps = makeDeps({ webhook: { send: webhookSend } });
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(baseAlert);
+
+    expect(webhookSend).toHaveBeenCalledOnce();
+    const payload = webhookSend.mock.calls[0][0] as any;
+    expect(payload.alert.searchId).toBe('search-uuid-1');
+    expect(payload.flightSummary).toBeDefined();
+    expect(payload.searchName).toBe('Test Search');
+  });
+
+  it('skips webhook channel when null', async () => {
+    const webhookSend = vi.fn();
+    const deps = makeDeps({ webhook: null });
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(baseAlert);
+
+    expect(webhookSend).not.toHaveBeenCalled();
+  });
+
+  it('records webhook in channelsSent when sent', async () => {
+    const deps = makeDeps({ webhook: { send: vi.fn().mockResolvedValue(undefined) } });
+    const worker = new NotifierWorker(deps as never);
+    await worker.process(baseAlert);
+
+    expect(deps.prisma.alert.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        channelsSent: expect.arrayContaining(['webhook']),
+      }),
+    });
+  });
+
+  it('sends slack and discord for urgent level when configured', async () => {
+    const slackSend = vi.fn().mockResolvedValue(undefined);
+    const discordSend = vi.fn().mockResolvedValue(undefined);
+    const deps = makeDeps({
+      slack: { send: slackSend },
+      discord: { send: discordSend },
+    });
+    const worker = new NotifierWorker(deps as never);
+    await worker.process({ ...baseAlert, level: 'urgent' });
+
+    expect(slackSend).toHaveBeenCalledOnce();
+    expect(discordSend).toHaveBeenCalledOnce();
+  });
+
+  it('does not send slack/discord for good level', async () => {
+    const slackSend = vi.fn().mockResolvedValue(undefined);
+    const discordSend = vi.fn().mockResolvedValue(undefined);
+    const deps = makeDeps({
+      slack: { send: slackSend },
+      discord: { send: discordSend },
+    });
+    const worker = new NotifierWorker(deps as never);
+    await worker.process({ ...baseAlert, level: 'good' });
+
+    expect(slackSend).not.toHaveBeenCalled();
+    expect(discordSend).not.toHaveBeenCalled();
+  });
+
+  it('continues processing when webhook channel throws', async () => {
+    const deps = makeDeps({
+      webhook: { send: vi.fn().mockRejectedValue(new Error('Network error')) },
+    });
+    const worker = new NotifierWorker(deps as never);
+    // Should not throw
+    await expect(worker.process(baseAlert)).resolves.toBeUndefined();
+    // Alert should still be saved
+    expect(deps.prisma.alert.create).toHaveBeenCalled();
+  });
+
+  it('continues processing when slack channel throws', async () => {
+    const deps = makeDeps({
+      slack: { send: vi.fn().mockRejectedValue(new Error('Slack error')) },
+      discord: null,
+    });
+    const worker = new NotifierWorker(deps as never);
+    await expect(worker.process({ ...baseAlert, level: 'urgent' })).resolves.toBeUndefined();
+    expect(deps.prisma.alert.create).toHaveBeenCalled();
   });
 });

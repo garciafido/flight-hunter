@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { fetchSystemStatus, fetchSystemSettings, updateSystemSettings } from '@/lib/api';
+import type { SystemSettings } from '@/lib/api';
 
 function StatusDot({ status }: { status: string }) {
   const ok = status === 'ok';
@@ -120,12 +121,30 @@ export default function SystemPage() {
   const [emailsPaused, setEmailsPaused] = useState(false);
   const [togglingEmails, setTogglingEmails] = useState(false);
 
+  // Webhook settings
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookEnabled, setWebhookEnabled] = useState(false);
+  const [savingWebhook, setSavingWebhook] = useState(false);
+  const [webhookTestResult, setWebhookTestResult] = useState<string | null>(null);
+
+  // Slack settings
+  const [slackWebhookUrl, setSlackWebhookUrl] = useState('');
+  const [savingSlack, setSavingSlack] = useState(false);
+
+  // Discord settings
+  const [discordWebhookUrl, setDiscordWebhookUrl] = useState('');
+  const [savingDiscord, setSavingDiscord] = useState(false);
+
   function load() {
     setLoading(true);
-    fetchSystemStatus()
-      .then((s) => {
+    Promise.all([fetchSystemStatus(), fetchSystemSettings()])
+      .then(([s, settings]) => {
         setStatus(s);
         setEmailsPaused(s.emailsPaused ?? false);
+        setWebhookUrl(settings.webhookUrl ?? '');
+        setWebhookEnabled(settings.webhookEnabled ?? false);
+        setSlackWebhookUrl(settings.slackWebhookUrl ?? '');
+        setDiscordWebhookUrl(settings.discordWebhookUrl ?? '');
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -143,6 +162,55 @@ export default function SystemPage() {
       console.error(e);
     } finally {
       setTogglingEmails(false);
+    }
+  }
+
+  async function handleSaveWebhook() {
+    setSavingWebhook(true);
+    setWebhookTestResult(null);
+    try {
+      await updateSystemSettings({ webhookUrl: webhookUrl || null, webhookEnabled });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingWebhook(false);
+    }
+  }
+
+  async function handleTestWebhook() {
+    if (!webhookUrl) return;
+    setWebhookTestResult(null);
+    try {
+      const res = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test: true, source: 'flight-hunter', timestamp: new Date().toISOString() }),
+      });
+      setWebhookTestResult(res.ok ? 'OK (' + res.status + ')' : 'Error: ' + res.status);
+    } catch (e) {
+      setWebhookTestResult('Error: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  async function handleSaveSlack() {
+    setSavingSlack(true);
+    try {
+      await updateSystemSettings({ slackWebhookUrl: slackWebhookUrl || null });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingSlack(false);
+    }
+  }
+
+  async function handleSaveDiscord() {
+    setSavingDiscord(true);
+    try {
+      await updateSystemSettings({ discordWebhookUrl: discordWebhookUrl || null });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingDiscord(false);
     }
   }
 
@@ -233,6 +301,89 @@ export default function SystemPage() {
         ) : (
           <div style={{ color: '#ef4444' }}>{status.queues?.error ?? 'No se pudo conectar a las colas'}</div>
         )}
+      </div>
+
+      {/* Webhook section */}
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '14px 20px', marginBottom: 20 }}>
+        <h2 style={{ margin: '0 0 12px', fontSize: 15 }}>Webhook genérico</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+            <input type="checkbox" checked={webhookEnabled} onChange={e => setWebhookEnabled(e.target.checked)} />
+            Habilitado
+          </label>
+          <input
+            type="url"
+            value={webhookUrl}
+            onChange={e => setWebhookUrl(e.target.value)}
+            placeholder="https://example.com/webhook"
+            style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14, width: '100%', maxWidth: 480 }}
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={handleSaveWebhook} disabled={savingWebhook} style={{
+              padding: '7px 16px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
+              border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600,
+              opacity: savingWebhook ? 0.7 : 1,
+            }}>
+              {savingWebhook ? 'Guardando...' : 'Guardar'}
+            </button>
+            <button onClick={handleTestWebhook} disabled={!webhookUrl} style={{
+              padding: '7px 16px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
+              border: '1px solid #d1d5db', background: '#fff', color: '#374151',
+              opacity: !webhookUrl ? 0.5 : 1,
+            }}>
+              Probar
+            </button>
+            {webhookTestResult && (
+              <span style={{ fontSize: 13, alignSelf: 'center', color: webhookTestResult.startsWith('OK') ? '#22c55e' : '#ef4444' }}>
+                {webhookTestResult}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Slack section */}
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '14px 20px', marginBottom: 20 }}>
+        <h2 style={{ margin: '0 0 12px', fontSize: 15 }}>Slack</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input
+            type="url"
+            value={slackWebhookUrl}
+            onChange={e => setSlackWebhookUrl(e.target.value)}
+            placeholder="https://hooks.slack.com/services/..."
+            style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14, width: '100%', maxWidth: 480 }}
+          />
+          <button onClick={handleSaveSlack} disabled={savingSlack} style={{
+            width: 'fit-content', padding: '7px 16px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
+            border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600,
+            opacity: savingSlack ? 0.7 : 1,
+          }}>
+            {savingSlack ? 'Guardando...' : 'Guardar'}
+          </button>
+          <span style={{ fontSize: 12, color: '#6b7280' }}>URL del incoming webhook de Slack. Se activa con alertas urgentes.</span>
+        </div>
+      </div>
+
+      {/* Discord section */}
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '14px 20px', marginBottom: 20 }}>
+        <h2 style={{ margin: '0 0 12px', fontSize: 15 }}>Discord</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input
+            type="url"
+            value={discordWebhookUrl}
+            onChange={e => setDiscordWebhookUrl(e.target.value)}
+            placeholder="https://discord.com/api/webhooks/..."
+            style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14, width: '100%', maxWidth: 480 }}
+          />
+          <button onClick={handleSaveDiscord} disabled={savingDiscord} style={{
+            width: 'fit-content', padding: '7px 16px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
+            border: 'none', background: '#5865f2', color: '#fff', fontWeight: 600,
+            opacity: savingDiscord ? 0.7 : 1,
+          }}>
+            {savingDiscord ? 'Guardando...' : 'Guardar'}
+          </button>
+          <span style={{ fontSize: 12, color: '#6b7280' }}>URL del webhook de Discord. Se activa con alertas urgentes.</span>
+        </div>
       </div>
 
       {/* Sources cards */}

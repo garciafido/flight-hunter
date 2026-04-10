@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { isEmailsPaused, resetSettingsCache, injectSettingsCache } from '../../src/settings-cache.js';
+import {
+  isEmailsPaused,
+  resetSettingsCache,
+  injectSettingsCache,
+  injectFullSettingsCache,
+  getWebhookConfig,
+  getSlackWebhookUrl,
+  getDiscordWebhookUrl,
+} from '../../src/settings-cache.js';
 import type { PrismaClient } from '@flight-hunter/shared';
 
 function makePrisma(emailsPaused: boolean) {
@@ -73,5 +81,64 @@ describe('isEmailsPaused', () => {
     // We do this by calling with the injected value (cache already set above)
     const result = await isEmailsPaused(prisma);
     expect(result).toBe(true);
+  });
+});
+
+describe('getWebhookConfig', () => {
+  it('returns null url and false enabled when not configured', async () => {
+    const prisma = {
+      systemSettings: {
+        findUnique: vi.fn().mockResolvedValue(null),
+      },
+    } as unknown as PrismaClient;
+    const result = await getWebhookConfig(prisma);
+    expect(result.url).toBeNull();
+    expect(result.enabled).toBe(false);
+  });
+
+  it('returns configured webhook settings', async () => {
+    injectFullSettingsCache({ webhookUrl: 'https://example.com/hook', webhookEnabled: true });
+    const prisma = { systemSettings: { findUnique: vi.fn() } } as unknown as PrismaClient;
+    const result = await getWebhookConfig(prisma);
+    expect(result.url).toBe('https://example.com/hook');
+    expect(result.enabled).toBe(true);
+  });
+});
+
+describe('getSlackWebhookUrl', () => {
+  it('returns null when not configured', async () => {
+    const prisma = {
+      systemSettings: {
+        findUnique: vi.fn().mockResolvedValue(null),
+      },
+    } as unknown as PrismaClient;
+    const result = await getSlackWebhookUrl(prisma);
+    expect(result).toBeNull();
+  });
+
+  it('returns configured Slack URL', async () => {
+    injectFullSettingsCache({ slackWebhookUrl: 'https://hooks.slack.com/services/test' });
+    const prisma = { systemSettings: { findUnique: vi.fn() } } as unknown as PrismaClient;
+    const result = await getSlackWebhookUrl(prisma);
+    expect(result).toBe('https://hooks.slack.com/services/test');
+  });
+});
+
+describe('getDiscordWebhookUrl', () => {
+  it('returns null when not configured', async () => {
+    const prisma = {
+      systemSettings: {
+        findUnique: vi.fn().mockResolvedValue(null),
+      },
+    } as unknown as PrismaClient;
+    const result = await getDiscordWebhookUrl(prisma);
+    expect(result).toBeNull();
+  });
+
+  it('returns configured Discord URL', async () => {
+    injectFullSettingsCache({ discordWebhookUrl: 'https://discord.com/api/webhooks/123/abc' });
+    const prisma = { systemSettings: { findUnique: vi.fn() } } as unknown as PrismaClient;
+    const result = await getDiscordWebhookUrl(prisma);
+    expect(result).toBe('https://discord.com/api/webhooks/123/abc');
   });
 });

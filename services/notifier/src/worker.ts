@@ -3,12 +3,25 @@ import type { AlertJob } from '@flight-hunter/shared';
 import type { TelegramChannel } from './channels/telegram.js';
 import type { EmailChannel } from './channels/email.js';
 import type { WebSocketBroadcaster } from './channels/websocket.js';
+import type { WebhookChannel } from './channels/webhook.js';
+import type { SlackChannel } from './channels/slack.js';
+import type { DiscordChannel } from './channels/discord.js';
 import type { Throttle } from './throttle.js';
 import { formatTelegram } from './formatter/telegram-fmt.js';
 import { formatEmail } from './formatter/email-fmt.js';
 import { formatWebSocket } from './formatter/ws-fmt.js';
+import { formatSlack } from './formatter/slack-fmt.js';
+import { formatDiscord } from './formatter/discord-fmt.js';
 import { getChannelsForLevel } from './rules.js';
-import { isEmailsPaused } from './settings-cache.js';
+import {
+  isEmailsPaused,
+  getWebhookConfig,
+  getSlackWebhookUrl,
+  getDiscordWebhookUrl,
+} from './settings-cache.js';
+import { createWebhookChannel } from './channels/webhook.js';
+import { createSlackChannel } from './channels/slack.js';
+import { createDiscordChannel } from './channels/discord.js';
 
 export interface NotifierDeps {
   telegram: TelegramChannel;
@@ -16,6 +29,12 @@ export interface NotifierDeps {
   wsBroadcaster: WebSocketBroadcaster;
   throttle: Throttle;
   prisma: PrismaClient;
+  /** Optional override for webhook channel (for testing). If not provided, created dynamically from settings. */
+  webhook?: WebhookChannel | null;
+  /** Optional override for slack channel (for testing). If not provided, created dynamically from settings. */
+  slack?: SlackChannel | null;
+  /** Optional override for discord channel (for testing). If not provided, created dynamically from settings. */
+  discord?: DiscordChannel | null;
 }
 
 function buildFingerprint(alert: AlertJob): string {
@@ -84,6 +103,53 @@ export class NotifierWorker {
       }
     }
 
+    // --- Webhook channel (always evaluated, not part of rules) ---
+    try {
+      const webhookChannel = await this.resolveWebhookChannel();
+      if (webhookChannel) {
+        const payload = {
+          alert: {
+            searchId: alert.searchId,
+            flightResultId: alert.flightResultId,
+            level: alert.level,
+            score: alert.score,
+          },
+          flightSummary: alert.flightSummary,
+          searchName,
+        };
+        await webhookChannel.send(payload);
+        channelsSent.push('webhook');
+      }
+    } catch (err) {
+      console.error('  Channel webhook failed:', err instanceof Error ? err.message : err);
+    }
+
+    // --- Slack channel (urgent alerts) ---
+    if (alert.level === 'urgent') {
+      try {
+        const slackChannel = await this.resolveSlackChannel();
+        if (slackChannel) {
+          const text = formatSlack(alert, searchName);
+          await slackChannel.send(text);
+          channelsSent.push('slack');
+        }
+      } catch (err) {
+        console.error('  Channel slack failed:', err instanceof Error ? err.message : err);
+      }
+
+      // --- Discord channel (urgent alerts) ---
+      try {
+        const discordChannel = await this.resolveDiscordChannel();
+        if (discordChannel) {
+          const { content, embeds } = formatDiscord(alert, searchName);
+          await discordChannel.send(content, embeds);
+          channelsSent.push('discord');
+        }
+      } catch (err) {
+        console.error('  Channel discord failed:', err instanceof Error ? err.message : err);
+      }
+    }
+
     this.deps.throttle.recordFlight(fingerprint);
 
     await this.deps.prisma.alert.create({
@@ -95,5 +161,34 @@ export class NotifierWorker {
         sentAt: new Date(),
       },
     });
+  }
+
+  private async resolveWebhookChannel(): Promise<WebhookChannel | null> {
+    // deps.webhook = undefined means auto-detect from settings
+    // deps.webhook = null means explicitly disabled (for tests)
+    if (this.deps.webhook !== undefined) {
+      return this.deps.webhook;
+    }
+    const { url, enabled } = await getWebhookConfig(this.deps.prisma);
+    if (!enabled || !url) return null;
+    return createWebhookChannel(url);
+  }
+
+  private async resolveSlackChannel(): Promise<SlackChannel | null> {
+    if (this.deps.slack !== undefined) {
+      return this.deps.slack;
+    }
+    const url = await getSlackWebhookUrl(this.deps.prisma);
+    if (!url) return null;
+    return createSlackChannel(url);
+  }
+
+  private async resolveDiscordChannel(): Promise<DiscordChannel | null> {
+    if (this.deps.discord !== undefined) {
+      return this.deps.discord;
+    }
+    const url = await getDiscordWebhookUrl(this.deps.prisma);
+    if (!url) return null;
+    return createDiscordChannel(url);
   }
 }

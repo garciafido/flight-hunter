@@ -1,6 +1,6 @@
 /* v8 ignore file */
 import { Worker, Queue } from 'bullmq';
-import { PrismaClient } from '@flight-hunter/shared';
+import { PrismaClient, createLogger } from '@flight-hunter/shared';
 import Redis from 'ioredis';
 import { QUEUE_NAMES, RawResultJobSchema } from '@flight-hunter/shared';
 import type { RawResultJob } from '@flight-hunter/shared';
@@ -10,6 +10,9 @@ import { DealDetector } from './detection/deal-detector.js';
 import { HistoryService } from './detection/history.js';
 import { OutlierDetector } from './detection/outlier-detector.js';
 import { Publisher } from './publisher.js';
+import { RetentionJob } from './retention/retention-job.js';
+
+const logger = createLogger('analyzer');
 
 const redis = new Redis({
   host: process.env.REDIS_HOST ?? 'localhost',
@@ -48,11 +51,36 @@ const worker = new Worker<RawResultJob>(
 );
 
 worker.on('failed', (job, err) => {
-  console.error(`Job ${job?.id} failed:`, err);
+  logger.error({ jobId: job?.id, err }, 'Analyzer job failed');
 });
 
 worker.on('completed', (job) => {
-  console.log(`Job ${job.id} completed`);
+  logger.info({ jobId: job.id }, 'Analyzer job completed');
 });
 
-console.log('Analyzer service started');
+// Daily retention job: runs at midnight, deletes old records
+const retentionQueue = new Queue('retention', { connection: redis });
+await retentionQueue.add(
+  'daily-retention',
+  {},
+  { repeat: { pattern: '0 0 * * *' } },
+);
+
+const retentionWorker = new Worker(
+  'retention',
+  async () => {
+    const retentionJob = new RetentionJob(prisma);
+    const result = await retentionJob.run();
+    logger.info(
+      { deletedFlightResults: result.deletedFlightResults, deletedSourceMetrics: result.deletedSourceMetrics },
+      'Retention job completed',
+    );
+  },
+  { connection: redis },
+);
+
+retentionWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, err }, 'Retention job failed');
+});
+
+logger.info('Analyzer service started');

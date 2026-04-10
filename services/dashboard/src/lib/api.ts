@@ -92,19 +92,40 @@ export async function fetchCombos(searchId: string): Promise<any[]> {
   return res.json();
 }
 
-export async function fetchSystemSettings(): Promise<{ emailsPaused: boolean }> {
+export interface SystemSettings {
+  emailsPaused: boolean;
+  webhookUrl: string | null;
+  webhookEnabled: boolean;
+  slackWebhookUrl: string | null;
+  discordWebhookUrl: string | null;
+}
+
+export async function fetchSystemSettings(): Promise<SystemSettings> {
   const res = await fetch(`${BASE}/system/settings`);
   if (!res.ok) throw new Error('Failed to fetch system settings');
   return res.json();
 }
 
-export async function updateSystemSettings(data: { emailsPaused: boolean }): Promise<{ emailsPaused: boolean }> {
+export async function updateSystemSettings(data: Partial<SystemSettings>): Promise<SystemSettings> {
   const res = await fetch(`${BASE}/system/settings`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error('Failed to update system settings');
+  return res.json();
+}
+
+export async function submitAlertFeedback(
+  alertId: string,
+  value: 'positive' | 'negative',
+): Promise<{ id: string; feedback: string; feedbackAt: string }> {
+  const res = await fetch(`${BASE}/alerts/${alertId}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value }),
+  });
+  if (!res.ok) throw new Error('Failed to submit feedback');
   return res.json();
 }
 

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { ServiceWorkerRegister } from '@/components/sw-register';
 
 export const metadata: Metadata = {
   title: 'Flight Hunter Dashboard',
@@ -9,7 +10,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#0066cc" />
+      </head>
       <body style={{ margin: 0, fontFamily: 'system-ui, sans-serif', display: 'flex', minHeight: '100vh' }}>
+        <ServiceWorkerRegister />
         <nav style={{
           width: 220, background: '#1e293b', color: '#fff', display: 'flex',
           flexDirection: 'column', padding: '24px 0', flexShrink: 0,
