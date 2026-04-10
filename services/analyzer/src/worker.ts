@@ -7,6 +7,7 @@ import { computePriceScore } from './scoring/price-score.js';
 import { computeScheduleScore } from './scoring/schedule-score.js';
 import { computeStopoverScore } from './scoring/stopover-score.js';
 import { computeAirlineScore } from './scoring/airline-score.js';
+import { computeFlexibilityScore } from './scoring/flexibility-score.js';
 import { FilterEngine } from './filters/filter-engine.js';
 import { DealDetector } from './detection/deal-detector.js';
 import { HistoryService } from './detection/history.js';
@@ -93,7 +94,7 @@ export class AnalyzerWorker {
 
     const airlineScore = computeAirlineScore(data.outbound.airline, data.inbound.airline, filters);
 
-    const flexibilityScore = 50; // hardcoded - no data from sources yet
+    const flexibilityScore = computeFlexibilityScore(data.outbound.airline, data.inbound.airline);
 
     const scoreResult = this.scoringEngine.compute([
       { name: 'price', score: priceScore },

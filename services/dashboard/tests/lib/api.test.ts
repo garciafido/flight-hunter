@@ -4,7 +4,7 @@ import {
   fetchResults, fetchAlerts, fetchProxies, createProxy, fetchSystemStatus,
   fetchSystemSettings, updateSystemSettings, promoteResult, fetchSuspiciousResults,
   snoozeSearch, unsnoozeSearch, purchaseSearch, archiveSearch, reactivateSearch,
-  fetchCalendar, fetchHistory, fetchDestinations, fetchWindows,
+  fetchCalendar, fetchHistory, fetchDestinations, fetchWindows, fetchPrediction,
 } from '@/lib/api';
 
 function mockFetch(ok: boolean, data: any) {
@@ -375,5 +375,34 @@ describe('fetchWindows', () => {
   it('throws on failure', async () => {
     global.fetch = mockFetch(false, {});
     await expect(fetchWindows('s1')).rejects.toThrow('Failed to fetch windows');
+  });
+});
+
+describe('fetchPrediction', () => {
+  it('fetches prediction for a search', async () => {
+    const data = {
+      prediction: {
+        currentMin: 400, movingAvg7d: 390, movingAvg30d: 420,
+        trendSlope: -2, predicted7dMin: 386, predicted14dMin: 372, confidence: 'high',
+      },
+      recommendation: { action: 'wait', reason: 'Bajista', predictedSavings: 14 },
+    };
+    global.fetch = mockFetch(true, data);
+    const result = await fetchPrediction('s1');
+    expect(fetch).toHaveBeenCalledWith('/api/searches/s1/prediction');
+    expect(result.prediction!.currentMin).toBe(400);
+    expect(result.recommendation!.action).toBe('wait');
+  });
+
+  it('returns null prediction and recommendation when no history', async () => {
+    global.fetch = mockFetch(true, { prediction: null, recommendation: null });
+    const result = await fetchPrediction('s1');
+    expect(result.prediction).toBeNull();
+    expect(result.recommendation).toBeNull();
+  });
+
+  it('throws on failure', async () => {
+    global.fetch = mockFetch(false, {});
+    await expect(fetchPrediction('s1')).rejects.toThrow('Failed to fetch prediction');
   });
 });

@@ -205,3 +205,26 @@ export async function fetchWindows(
   if (!res.ok) throw new Error('Failed to fetch windows');
   return res.json();
 }
+
+export async function fetchPrediction(
+  searchId: string,
+): Promise<{
+  prediction: {
+    currentMin: number;
+    movingAvg7d: number;
+    movingAvg30d: number;
+    trendSlope: number;
+    predicted7dMin: number;
+    predicted14dMin: number;
+    confidence: 'low' | 'medium' | 'high';
+  } | null;
+  recommendation: {
+    action: 'buy-now' | 'wait' | 'monitor';
+    reason: string;
+    predictedSavings?: number;
+  } | null;
+}> {
+  const res = await fetch(`${BASE}/searches/${searchId}/prediction`);
+  if (!res.ok) throw new Error('Failed to fetch prediction');
+  return res.json();
+}

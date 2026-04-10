@@ -1,3 +1,4 @@
+export * from './data/airline-ratings.js';
 export * from './types/flight.js';
 export * from './types/search.js';
 export * from './types/proxy.js';

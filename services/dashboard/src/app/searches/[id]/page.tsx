@@ -18,12 +18,14 @@ import {
   fetchHistory,
   fetchDestinations,
   fetchWindows,
+  fetchPrediction,
 } from '@/lib/api';
 import { FlightCard } from '@/components/flight-card';
 import { PriceChart } from '@/components/price-chart';
 import { PriceHeatmap } from '@/components/price-heatmap';
 import { DestinationCard } from '@/components/destination-card';
 import { WindowRow } from '@/components/window-row';
+import { PredictionCard } from '@/components/prediction-card';
 
 function StatusBanner({ search, onReactivate }: { search: any; onReactivate: () => void }) {
   if (search.status === 'snoozed') {
@@ -87,6 +89,7 @@ export default function SearchDetailPage() {
   const [historyData, setHistoryData] = useState<any>(null);
   const [destinationsData, setDestinationsData] = useState<any>(null);
   const [windowsData, setWindowsData] = useState<any>(null);
+  const [predictionData, setPredictionData] = useState<any>(null);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -121,6 +124,11 @@ export default function SearchDetailPage() {
   useEffect(() => {
     if (!id) return;
     fetchHistory(id, 30).then(setHistoryData).catch(console.error);
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    fetchPrediction(id).then(setPredictionData).catch(console.error);
   }, [id]);
 
   const handleReactivate = async () => {
@@ -303,6 +311,21 @@ export default function SearchDetailPage() {
         <h2 style={{ margin: '0 0 16px', fontSize: 16 }}>Historial de Precios</h2>
         <PriceChart data={chartData} alerts={chartAlerts} />
       </div>
+
+      {/* Price prediction */}
+      {predictionData?.prediction && predictionData?.recommendation ? (
+        <PredictionCard
+          prediction={predictionData.prediction}
+          recommendation={predictionData.recommendation}
+        />
+      ) : predictionData !== null && predictionData?.prediction === null ? (
+        <div style={{
+          background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8,
+          padding: '16px 24px', marginBottom: 24, color: '#9ca3af', fontSize: 14,
+        }}>
+          Predicción: Aún sin datos suficientes para mostrar tendencia de precios.
+        </div>
+      ) : null}
 
       {/* Calendar heatmap */}
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 24, marginBottom: 24 }}>
