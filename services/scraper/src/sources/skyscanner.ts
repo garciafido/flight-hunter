@@ -56,8 +56,10 @@ export class SkyscannerSource implements FlightSource {
       const json = (await response.json()) as { data: SkyscannerData[] };
       const proxyRegion = (config.proxyRegions[0] ?? 'CL') as ProxyRegion;
 
-      return json.data.map((item) =>
-        normalizeSkyscannerResult(item, config.id, config.passengers, proxyRegion),
+      return Promise.all(
+        json.data.map((item) =>
+          normalizeSkyscannerResult(item, config.id, config.passengers, proxyRegion),
+        ),
       );
     } catch {
       return [];

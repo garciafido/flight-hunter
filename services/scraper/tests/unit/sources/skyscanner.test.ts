@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SkyscannerSource } from '../../../src/sources/skyscanner.js';
 import type { SearchConfig } from '@flight-hunter/shared';
+import { injectCache, resetCache } from '../../../src/utils/exchange-rates.js';
 
 const makeConfig = (overrides: Partial<SearchConfig> = {}): SearchConfig => ({
   id: 'search-2',
@@ -71,6 +72,9 @@ describe('SkyscannerSource', () => {
   beforeEach(() => {
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
+    resetCache();
+    // Pre-seed exchange rate cache so tests don't hit the network
+    injectCache({ EUR: 0.9 });
   });
 
   afterEach(() => {

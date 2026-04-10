@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AmadeusSource } from '../../../src/sources/amadeus.js';
 import type { SearchConfig } from '@flight-hunter/shared';
+import { injectCache, resetCache } from '../../../src/utils/exchange-rates.js';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -85,6 +86,9 @@ describe('AmadeusSource', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetCache();
+    // Pre-seed exchange rate cache so tests don't hit the network
+    injectCache({ EUR: 0.9 });
     source = new AmadeusSource('test-key', 'test-secret');
   });
 

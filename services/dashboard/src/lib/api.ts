@@ -115,3 +115,9 @@ export async function promoteResult(resultId: string): Promise<any> {
   if (!res.ok) throw new Error('Failed to promote result');
   return res.json();
 }
+
+export async function fetchSuspiciousResults(searchId: string): Promise<any[]> {
+  const res = await fetch(`${BASE}/searches/${searchId}/results?suspicious=true`);
+  if (!res.ok) throw new Error('Failed to fetch suspicious results');
+  return res.json();
+}

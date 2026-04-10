@@ -14,8 +14,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       sort === 'score' ? { score: 'desc' as const } :
       { scrapedAt: 'desc' as const };
 
+    const suspiciousParam = url.searchParams.get('suspicious');
+    const suspiciousFilter =
+      suspiciousParam === 'true' ? true :
+      suspiciousParam === 'false' ? false :
+      undefined;
+
     const results = await prisma.flightResult.findMany({
-      where: { searchId: id },
+      where: {
+        searchId: id,
+        ...(suspiciousFilter !== undefined ? { suspicious: suspiciousFilter } as any : {}),
+      },
       orderBy,
       take: limit,
       skip: offset,

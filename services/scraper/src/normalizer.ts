@@ -1,4 +1,5 @@
 import type { FlightResult, FlightLeg, StopoverInfo, ProxyRegion } from '@flight-hunter/shared';
+import { convertToUsd } from './utils/exchange-rates.js';
 
 // ─── Kiwi ────────────────────────────────────────────────────────────────────
 
@@ -56,12 +57,12 @@ function detectStopover(
   return undefined;
 }
 
-export function normalizeKiwiResult(
+export async function normalizeKiwiResult(
   data: KiwiData,
   searchId: string,
   passengers: number,
   proxyRegion: ProxyRegion,
-): FlightResult {
+): Promise<FlightResult> {
   const outboundRoutes = data.route.filter((r) => r.return === 0);
   const inboundRoutes = data.route.filter((r) => r.return === 1);
 
@@ -91,20 +92,28 @@ export function normalizeKiwiResult(
   const stopover =
     detectStopover(outboundRoutes, 'outbound') ?? detectStopover(inboundRoutes, 'inbound');
 
+  const currencyOriginal = data.currency ?? 'USD';
+  const priceOriginal = data.price;
+  const priceUsd = await convertToUsd(priceOriginal, currencyOriginal);
+
   return {
     searchId,
     source: 'kiwi',
     outbound,
     inbound,
     stopover,
-    totalPrice: data.price,
-    currency: data.currency ?? 'USD',
+    totalPrice: priceUsd,
+    currency: currencyOriginal,
     pricePer: 'total',
     passengers,
     carryOnIncluded: data.bags_price.hand === 0,
     bookingUrl: data.deep_link,
     scrapedAt: new Date(),
     proxyRegion,
+    priceOriginal,
+    currencyOriginal,
+    priceUsd,
+    exchangeRateAt: new Date(),
   };
 }
 
@@ -141,12 +150,12 @@ function parseIsoDuration(iso: string): number {
   return (parseInt(match[1] ?? '0', 10) * 60) + parseInt(match[2] ?? '0', 10);
 }
 
-export function normalizeAmadeusResult(
+export async function normalizeAmadeusResult(
   offer: AmadeusOffer,
   searchId: string,
   passengers: number,
   proxyRegion: ProxyRegion,
-): FlightResult {
+): Promise<FlightResult> {
   const outItinerary = offer.itineraries[0];
   const inItinerary = offer.itineraries[1];
 
@@ -196,20 +205,28 @@ export function normalizeAmadeusResult(
   }
   const stopover = findGap(outSegments, 'outbound') ?? findGap(inSegments, 'inbound');
 
+  const currencyOriginal = offer.price.currency;
+  const priceOriginal = parseFloat(offer.price.total);
+  const priceUsd = await convertToUsd(priceOriginal, currencyOriginal);
+
   return {
     searchId,
     source: 'amadeus',
     outbound,
     inbound,
     stopover,
-    totalPrice: parseFloat(offer.price.total),
-    currency: offer.price.currency,
+    totalPrice: priceUsd,
+    currency: currencyOriginal,
     pricePer: 'total',
     passengers,
     carryOnIncluded: true, // Amadeus economy always includes carry-on
     bookingUrl: `https://www.amadeus.com/flight/${offer.id}`,
     scrapedAt: new Date(),
     proxyRegion,
+    priceOriginal,
+    currencyOriginal,
+    priceUsd,
+    exchangeRateAt: new Date(),
   };
 }
 
@@ -235,12 +252,12 @@ export interface SkyscannerData {
   bookingUrl: string;
 }
 
-export function normalizeSkyscannerResult(
+export async function normalizeSkyscannerResult(
   data: SkyscannerData,
   searchId: string,
   passengers: number,
   proxyRegion: ProxyRegion,
-): FlightResult {
+): Promise<FlightResult> {
   const outbound: FlightLeg = {
     departure: { airport: data.outbound.origin, time: data.outbound.departure },
     arrival: { airport: data.outbound.destination, time: data.outbound.arrival },
@@ -259,19 +276,27 @@ export function normalizeSkyscannerResult(
     stops: data.inbound.stopCount,
   };
 
+  const currencyOriginal = data.currency;
+  const priceOriginal = data.price;
+  const priceUsd = await convertToUsd(priceOriginal, currencyOriginal);
+
   return {
     searchId,
     source: 'skyscanner',
     outbound,
     inbound,
-    totalPrice: data.price,
-    currency: data.currency,
+    totalPrice: priceUsd,
+    currency: currencyOriginal,
     pricePer: 'total',
     passengers,
     carryOnIncluded: false,
     bookingUrl: data.bookingUrl,
     scrapedAt: new Date(),
     proxyRegion,
+    priceOriginal,
+    currencyOriginal,
+    priceUsd,
+    exchangeRateAt: new Date(),
   };
 }
 

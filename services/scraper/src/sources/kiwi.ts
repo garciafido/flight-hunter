@@ -66,8 +66,10 @@ export class KiwiSource implements FlightSource {
       const json = (await response.json()) as { data: KiwiData[] };
       const proxyRegion = (config.proxyRegions[0] ?? 'CL') as ProxyRegion;
 
-      return json.data.map((item) =>
-        normalizeKiwiResult(item, config.id, config.passengers, proxyRegion),
+      return Promise.all(
+        json.data.map((item) =>
+          normalizeKiwiResult(item, config.id, config.passengers, proxyRegion),
+        ),
       );
     } catch {
       return [];

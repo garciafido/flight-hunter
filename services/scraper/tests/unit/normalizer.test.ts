@@ -1,10 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   normalizeKiwiResult,
   normalizeSkyscannerResult,
   normalizeAmadeusResult,
 } from '../../src/normalizer.js';
 import type { KiwiData, SkyscannerData, AmadeusOffer } from '../../src/normalizer.js';
+import { resetCache, injectCache } from '../../src/utils/exchange-rates.js';
+
+// Inject a fake exchange-rate cache so tests don't hit the network.
+// USD=1 means priceUsd == priceOriginal for USD-priced results.
+beforeEach(() => {
+  resetCache();
+  injectCache({ EUR: 0.9, ARS: 900, GBP: 0.8 });
+});
 
 const makeKiwiData = (overrides: Partial<KiwiData> = {}): KiwiData => ({
   id: 'kiwi-1',
@@ -41,13 +49,13 @@ const makeKiwiData = (overrides: Partial<KiwiData> = {}): KiwiData => ({
 });
 
 describe('normalizeKiwiResult', () => {
-  it('maps basic fields correctly', () => {
+  it('maps basic fields correctly', async () => {
     const data = makeKiwiData();
-    const result = normalizeKiwiResult(data, 'search-1', 2, 'CL');
+    const result = await normalizeKiwiResult(data, 'search-1', 2, 'CL');
 
     expect(result.searchId).toBe('search-1');
     expect(result.source).toBe('kiwi');
-    expect(result.totalPrice).toBe(1200);
+    expect(result.totalPrice).toBe(1200); // USD→USD: 1:1
     expect(result.currency).toBe('USD');
     expect(result.pricePer).toBe('total');
     expect(result.passengers).toBe(2);
@@ -56,15 +64,38 @@ describe('normalizeKiwiResult', () => {
     expect(result.scrapedAt).toBeInstanceOf(Date);
   });
 
-  it('defaults currency to USD when not provided', () => {
-    const data = makeKiwiData({ currency: undefined });
-    const result = normalizeKiwiResult(data, 'search-1', 1, 'AR');
-    expect(result.currency).toBe('USD');
+  it('populates priceOriginal, currencyOriginal, priceUsd, exchangeRateAt', async () => {
+    const data = makeKiwiData({ price: 1200, currency: 'USD' });
+    const result = await normalizeKiwiResult(data, 'search-1', 1, 'CL');
+
+    expect(result.priceOriginal).toBe(1200);
+    expect(result.currencyOriginal).toBe('USD');
+    expect(result.priceUsd).toBe(1200);
+    expect(result.exchangeRateAt).toBeInstanceOf(Date);
   });
 
-  it('maps outbound leg correctly', () => {
+  it('converts non-USD currency to USD', async () => {
+    // EUR price: cache says EUR=0.9, so 1 EUR = 1/0.9 ≈ 1.111 USD
+    const data = makeKiwiData({ price: 900, currency: 'EUR' });
+    const result = await normalizeKiwiResult(data, 'search-1', 1, 'CL');
+
+    expect(result.currencyOriginal).toBe('EUR');
+    expect(result.priceOriginal).toBe(900);
+    // 900 * (1/0.9) = 1000 USD
+    expect(result.priceUsd).toBeCloseTo(1000, 1);
+    expect(result.totalPrice).toBeCloseTo(1000, 1);
+  });
+
+  it('defaults currency to USD when not provided', async () => {
+    const data = makeKiwiData({ currency: undefined });
+    const result = await normalizeKiwiResult(data, 'search-1', 1, 'AR');
+    expect(result.currency).toBe('USD');
+    expect(result.currencyOriginal).toBe('USD');
+  });
+
+  it('maps outbound leg correctly', async () => {
     const data = makeKiwiData();
-    const result = normalizeKiwiResult(data, 's1', 1, 'CL');
+    const result = await normalizeKiwiResult(data, 's1', 1, 'CL');
 
     expect(result.outbound.departure.airport).toBe('SCL');
     expect(result.outbound.departure.time).toBe('2025-07-01T10:00:00');
@@ -75,9 +106,9 @@ describe('normalizeKiwiResult', () => {
     expect(result.outbound.stops).toBe(0);
   });
 
-  it('maps inbound leg correctly', () => {
+  it('maps inbound leg correctly', async () => {
     const data = makeKiwiData();
-    const result = normalizeKiwiResult(data, 's1', 1, 'CL');
+    const result = await normalizeKiwiResult(data, 's1', 1, 'CL');
 
     expect(result.inbound.departure.airport).toBe('MAD');
     expect(result.inbound.arrival.airport).toBe('SCL');
@@ -86,25 +117,25 @@ describe('normalizeKiwiResult', () => {
     expect(result.inbound.stops).toBe(0);
   });
 
-  it('marks carryOnIncluded true when hand bag price is 0', () => {
+  it('marks carryOnIncluded true when hand bag price is 0', async () => {
     const data = makeKiwiData({ bags_price: { hand: 0 } });
-    const result = normalizeKiwiResult(data, 's1', 1, 'CL');
+    const result = await normalizeKiwiResult(data, 's1', 1, 'CL');
     expect(result.carryOnIncluded).toBe(true);
   });
 
-  it('marks carryOnIncluded false when hand bag costs money', () => {
+  it('marks carryOnIncluded false when hand bag costs money', async () => {
     const data = makeKiwiData({ bags_price: { hand: 20 } });
-    const result = normalizeKiwiResult(data, 's1', 1, 'CL');
+    const result = await normalizeKiwiResult(data, 's1', 1, 'CL');
     expect(result.carryOnIncluded).toBe(false);
   });
 
-  it('detects no stopover for direct outbound flight', () => {
+  it('detects no stopover for direct outbound flight', async () => {
     const data = makeKiwiData();
-    const result = normalizeKiwiResult(data, 's1', 1, 'CL');
+    const result = await normalizeKiwiResult(data, 's1', 1, 'CL');
     expect(result.stopover).toBeUndefined();
   });
 
-  it('detects stopover when gap >24h between outbound segments', () => {
+  it('detects stopover when gap >24h between outbound segments', async () => {
     const data = makeKiwiData({
       route: [
         {
@@ -136,14 +167,14 @@ describe('normalizeKiwiResult', () => {
         },
       ],
     });
-    const result = normalizeKiwiResult(data, 's1', 1, 'CL');
+    const result = await normalizeKiwiResult(data, 's1', 1, 'CL');
 
     expect(result.stopover).toBeDefined();
     expect(result.stopover?.airport).toBe('MAD');
     expect(result.stopover?.durationDays).toBe(2); // ~36h → 2 days (rounded)
   });
 
-  it('does not detect stopover when gap is exactly 24h', () => {
+  it('does not detect stopover when gap is exactly 24h', async () => {
     const data = makeKiwiData({
       route: [
         {
@@ -175,11 +206,11 @@ describe('normalizeKiwiResult', () => {
         },
       ],
     });
-    const result = normalizeKiwiResult(data, 's1', 1, 'CL');
+    const result = await normalizeKiwiResult(data, 's1', 1, 'CL');
     expect(result.stopover).toBeUndefined();
   });
 
-  it('correctly counts stops for multi-segment outbound', () => {
+  it('correctly counts stops for multi-segment outbound', async () => {
     const data = makeKiwiData({
       route: [
         {
@@ -211,13 +242,13 @@ describe('normalizeKiwiResult', () => {
         },
       ],
     });
-    const result = normalizeKiwiResult(data, 's1', 1, 'CL');
+    const result = await normalizeKiwiResult(data, 's1', 1, 'CL');
     expect(result.outbound.stops).toBe(1);
   });
 
-  it('computes outbound duration from first departure to last arrival', () => {
+  it('computes outbound duration from first departure to last arrival', async () => {
     const data = makeKiwiData();
-    const result = normalizeKiwiResult(data, 's1', 1, 'CL');
+    const result = await normalizeKiwiResult(data, 's1', 1, 'CL');
     // 10:00 to 22:00 = 12 hours = 720 minutes
     expect(result.outbound.durationMinutes).toBe(720);
   });
@@ -254,9 +285,9 @@ const makeSkyscannerData = (overrides: Partial<SkyscannerData> = {}): Skyscanner
 });
 
 describe('normalizeSkyscannerResult', () => {
-  it('maps basic fields correctly', () => {
+  it('maps basic fields correctly', async () => {
     const data = makeSkyscannerData();
-    const result = normalizeSkyscannerResult(data, 'search-2', 2, 'AR');
+    const result = await normalizeSkyscannerResult(data, 'search-2', 2, 'AR');
 
     expect(result.searchId).toBe('search-2');
     expect(result.source).toBe('skyscanner');
@@ -271,9 +302,30 @@ describe('normalizeSkyscannerResult', () => {
     expect(result.stopover).toBeUndefined();
   });
 
-  it('maps outbound leg correctly', () => {
+  it('populates priceOriginal, currencyOriginal, priceUsd, exchangeRateAt', async () => {
+    const data = makeSkyscannerData({ price: 950, currency: 'USD' });
+    const result = await normalizeSkyscannerResult(data, 'search-2', 1, 'CL');
+
+    expect(result.priceOriginal).toBe(950);
+    expect(result.currencyOriginal).toBe('USD');
+    expect(result.priceUsd).toBe(950);
+    expect(result.exchangeRateAt).toBeInstanceOf(Date);
+  });
+
+  it('converts non-USD currency to USD', async () => {
+    const data = makeSkyscannerData({ price: 800, currency: 'GBP' });
+    const result = await normalizeSkyscannerResult(data, 'search-2', 1, 'CL');
+
+    // GBP=0.8 → 1 GBP = 1/0.8 = 1.25 USD → 800 * 1.25 = 1000
+    expect(result.priceUsd).toBeCloseTo(1000, 1);
+    expect(result.totalPrice).toBeCloseTo(1000, 1);
+    expect(result.currencyOriginal).toBe('GBP');
+    expect(result.priceOriginal).toBe(800);
+  });
+
+  it('maps outbound leg correctly', async () => {
     const data = makeSkyscannerData();
-    const result = normalizeSkyscannerResult(data, 's2', 1, 'CL');
+    const result = await normalizeSkyscannerResult(data, 's2', 1, 'CL');
 
     expect(result.outbound.departure.airport).toBe('SCL');
     expect(result.outbound.departure.time).toBe('2025-07-01T10:00:00');
@@ -285,9 +337,9 @@ describe('normalizeSkyscannerResult', () => {
     expect(result.outbound.stops).toBe(0);
   });
 
-  it('maps inbound leg correctly', () => {
+  it('maps inbound leg correctly', async () => {
     const data = makeSkyscannerData();
-    const result = normalizeSkyscannerResult(data, 's2', 1, 'CL');
+    const result = await normalizeSkyscannerResult(data, 's2', 1, 'CL');
 
     expect(result.inbound.departure.airport).toBe('MAD');
     expect(result.inbound.arrival.airport).toBe('SCL');
@@ -297,7 +349,7 @@ describe('normalizeSkyscannerResult', () => {
     expect(result.inbound.stops).toBe(0);
   });
 
-  it('uses empty string when carriers array is empty', () => {
+  it('uses empty string when carriers array is empty', async () => {
     const data = makeSkyscannerData({
       outbound: {
         origin: 'SCL',
@@ -320,7 +372,7 @@ describe('normalizeSkyscannerResult', () => {
         flightNumbers: [],
       },
     });
-    const result = normalizeSkyscannerResult(data, 's2', 1, 'CL');
+    const result = await normalizeSkyscannerResult(data, 's2', 1, 'CL');
     expect(result.outbound.airline).toBe('');
     expect(result.outbound.flightNumber).toBe('');
   });
@@ -369,9 +421,9 @@ const makeAmadeusOffer = (overrides: Partial<AmadeusOffer> = {}): AmadeusOffer =
 });
 
 describe('normalizeAmadeusResult', () => {
-  it('maps basic fields correctly', () => {
+  it('maps basic fields correctly', async () => {
     const offer = makeAmadeusOffer();
-    const result = normalizeAmadeusResult(offer, 'search-3', 2, 'CL');
+    const result = await normalizeAmadeusResult(offer, 'search-3', 2, 'CL');
 
     expect(result.searchId).toBe('search-3');
     expect(result.source).toBe('amadeus');
@@ -384,8 +436,30 @@ describe('normalizeAmadeusResult', () => {
     expect(result.scrapedAt).toBeInstanceOf(Date);
   });
 
-  it('maps outbound leg correctly', () => {
-    const result = normalizeAmadeusResult(makeAmadeusOffer(), 's3', 1, 'AR');
+  it('populates priceOriginal, currencyOriginal, priceUsd, exchangeRateAt', async () => {
+    const offer = makeAmadeusOffer({ price: { total: '570.00', currency: 'USD' } });
+    const result = await normalizeAmadeusResult(offer, 'search-3', 2, 'CL');
+
+    expect(result.priceOriginal).toBe(570);
+    expect(result.currencyOriginal).toBe('USD');
+    expect(result.priceUsd).toBe(570);
+    expect(result.exchangeRateAt).toBeInstanceOf(Date);
+  });
+
+  it('converts non-USD currency to USD', async () => {
+    // EUR=0.9 → 1 EUR = 1/0.9 USD
+    const offer = makeAmadeusOffer({ price: { total: '450.00', currency: 'EUR' } });
+    const result = await normalizeAmadeusResult(offer, 'search-3', 1, 'CL');
+
+    // 450 * (1/0.9) = 500 USD
+    expect(result.priceUsd).toBeCloseTo(500, 1);
+    expect(result.totalPrice).toBeCloseTo(500, 1);
+    expect(result.currencyOriginal).toBe('EUR');
+    expect(result.priceOriginal).toBe(450);
+  });
+
+  it('maps outbound leg correctly', async () => {
+    const result = await normalizeAmadeusResult(makeAmadeusOffer(), 's3', 1, 'AR');
 
     expect(result.outbound.departure.airport).toBe('AEP');
     expect(result.outbound.arrival.airport).toBe('CUZ');
@@ -395,8 +469,8 @@ describe('normalizeAmadeusResult', () => {
     expect(result.outbound.stops).toBe(0);
   });
 
-  it('maps inbound leg with stops', () => {
-    const result = normalizeAmadeusResult(makeAmadeusOffer(), 's3', 1, 'CL');
+  it('maps inbound leg with stops', async () => {
+    const result = await normalizeAmadeusResult(makeAmadeusOffer(), 's3', 1, 'CL');
 
     expect(result.inbound.departure.airport).toBe('CUZ');
     expect(result.inbound.arrival.airport).toBe('AEP');
@@ -404,7 +478,7 @@ describe('normalizeAmadeusResult', () => {
     expect(result.inbound.durationMinutes).toBe(480); // 8h
   });
 
-  it('detects stopover when gap >24h between outbound segments', () => {
+  it('detects stopover when gap >24h between outbound segments', async () => {
     const offer = makeAmadeusOffer({
       itineraries: [
         {
@@ -441,14 +515,14 @@ describe('normalizeAmadeusResult', () => {
       ],
     });
 
-    const result = normalizeAmadeusResult(offer, 's3', 2, 'CL');
+    const result = await normalizeAmadeusResult(offer, 's3', 2, 'CL');
 
     expect(result.stopover).toBeDefined();
     expect(result.stopover?.airport).toBe('LIM');
     expect(result.stopover?.durationDays).toBe(3);
   });
 
-  it('parses ISO duration correctly', () => {
+  it('parses ISO duration correctly', async () => {
     const offer = makeAmadeusOffer({
       itineraries: [
         {
@@ -474,7 +548,7 @@ describe('normalizeAmadeusResult', () => {
       ],
     });
 
-    const result = normalizeAmadeusResult(offer, 's3', 1, 'CL');
+    const result = await normalizeAmadeusResult(offer, 's3', 1, 'CL');
     expect(result.outbound.durationMinutes).toBe(765); // 12*60+45
     expect(result.inbound.durationMinutes).toBe(180); // 3*60
   });

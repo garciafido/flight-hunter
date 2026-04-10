@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { fetchSearch, fetchResults, fetchCombos } from '@/lib/api';
+import { fetchSearch, fetchResults, fetchCombos, fetchSuspiciousResults, promoteResult } from '@/lib/api';
 import { FlightCard } from '@/components/flight-card';
 import { PriceChart } from '@/components/price-chart';
 
@@ -14,13 +14,15 @@ export default function SearchDetailPage() {
   const [combos, setCombos] = useState<any[]>([]);
   const [sort, setSort] = useState('date');
   const [loading, setLoading] = useState(true);
+  const [suspicious, setSuspicious] = useState<any[]>([]);
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([fetchSearch(id), fetchResults(id, { sort, limit: 20 })])
-      .then(([s, r]) => {
+    Promise.all([fetchSearch(id), fetchResults(id, { sort, limit: 20 }), fetchSuspiciousResults(id)])
+      .then(([s, r, susp]) => {
         setSearch(s);
         setResults(r);
+        setSuspicious(susp);
         if (s.mode === 'split') {
           fetchCombos(id).then(setCombos).catch(console.error);
         }
@@ -90,6 +92,57 @@ export default function SearchDetailPage() {
               </div>
               <div style={{ fontSize: 13, color: '#6b7280' }}>
                 {combo.flightResultIds?.length ?? 0} vuelo(s) — {new Date(combo.createdAt).toLocaleString('es')}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {suspicious.length > 0 && (
+        <div style={{ background: '#fff', border: '1px solid #fbbf24', borderRadius: 8, padding: 24, marginBottom: 24 }}>
+          <h2 style={{ margin: '0 0 16px', fontSize: 16, color: '#92400e' }}>
+            Resultados sospechosos ({suspicious.length})
+          </h2>
+          {suspicious.map((r: any) => (
+            <div key={r.id} style={{
+              border: '1px solid #fde68a', borderRadius: 6, padding: 16, marginBottom: 12,
+              background: '#fffbeb',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 16 }}>
+                    {r.currency} {Number(r.totalPrice ?? r.pricePerPerson).toFixed(0)}
+                  </div>
+                  <div style={{ fontSize: 13, color: '#374151', marginTop: 4 }}>
+                    {r.outbound?.airline ?? '—'} · {r.outbound?.departure?.airport ?? '—'} → {r.inbound?.departure?.airport ?? '—'}
+                  </div>
+                  <div style={{ fontSize: 13, color: '#374151' }}>
+                    Salida: {r.outbound?.departure?.time ? new Date(r.outbound.departure.time).toLocaleDateString('es') : '—'}
+                    {' · '}
+                    Regreso: {r.inbound?.arrival?.time ? new Date(r.inbound.arrival.time).toLocaleDateString('es') : '—'}
+                  </div>
+                  {r.suspicionReason && (
+                    <div style={{ fontSize: 12, color: '#b45309', marginTop: 6, fontStyle: 'italic' }}>
+                      Motivo: {r.suspicionReason}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      await promoteResult(r.id);
+                      setSuspicious((prev) => prev.filter((x) => x.id !== r.id));
+                    } catch {
+                      console.error('Failed to promote result', r.id);
+                    }
+                  }}
+                  style={{
+                    padding: '6px 14px', background: '#f59e0b', border: 'none',
+                    borderRadius: 4, cursor: 'pointer', fontWeight: 600, fontSize: 13, color: '#fff',
+                  }}
+                >
+                  Promover
+                </button>
               </div>
             </div>
           ))}

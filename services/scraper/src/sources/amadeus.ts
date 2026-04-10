@@ -73,8 +73,10 @@ export class AmadeusSource implements FlightSource {
       const json = (await response.json()) as { data: AmadeusOffer[] };
       const proxyRegion = (config.proxyRegions[0] ?? 'CL') as ProxyRegion;
 
-      return (json.data ?? []).map((offer) =>
-        normalizeAmadeusResult(offer, config.id, config.passengers, proxyRegion),
+      return Promise.all(
+        (json.data ?? []).map((offer) =>
+          normalizeAmadeusResult(offer, config.id, config.passengers, proxyRegion),
+        ),
       );
     } catch {
       return [];

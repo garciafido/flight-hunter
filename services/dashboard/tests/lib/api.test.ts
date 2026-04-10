@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   fetchSearches, fetchSearch, createSearch, updateSearch, deleteSearch,
   fetchResults, fetchAlerts, fetchProxies, createProxy, fetchSystemStatus,
-  fetchSystemSettings, updateSystemSettings, promoteResult,
+  fetchSystemSettings, updateSystemSettings, promoteResult, fetchSuspiciousResults,
 } from '@/lib/api';
 
 function mockFetch(ok: boolean, data: any) {
@@ -210,5 +210,19 @@ describe('promoteResult', () => {
   it('throws on failure', async () => {
     global.fetch = mockFetch(false, {});
     await expect(promoteResult('result-123')).rejects.toThrow('Failed to promote result');
+  });
+});
+
+describe('fetchSuspiciousResults', () => {
+  it('fetches suspicious results for a search', async () => {
+    const mockResults = [{ id: 'r1', suspicious: true, suspicionReason: 'outlier price' }];
+    global.fetch = mockFetch(true, mockResults);
+    const result = await fetchSuspiciousResults('search-abc');
+    expect(fetch).toHaveBeenCalledWith('/api/searches/search-abc/results?suspicious=true');
+    expect(result).toEqual(mockResults);
+  });
+  it('throws on failure', async () => {
+    global.fetch = mockFetch(false, {});
+    await expect(fetchSuspiciousResults('search-abc')).rejects.toThrow('Failed to fetch suspicious results');
   });
 });

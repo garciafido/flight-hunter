@@ -13,6 +13,7 @@ import { VpnRouter } from './proxy/vpn-router.js';
 import { SearchJobProcessor } from './jobs/search-job.js';
 import { Scheduler } from './scheduler.js';
 import { seedSources } from './resilience/seed-sources.js';
+import { DefaultResilienceLayer } from './resilience/resilience-layer.js';
 
 const redis = new Redis({
   host: process.env.REDIS_HOST ?? 'localhost',
@@ -38,10 +39,17 @@ const duffelSource = new DuffelSource(process.env.DUFFEL_API_TOKEN ?? '');
 
 const vpnRouter = new VpnRouter(prisma);
 
+const resilienceLayer = new DefaultResilienceLayer(
+  prisma,
+  parseInt(process.env.CIRCUIT_BREAKER_THRESHOLD ?? '5', 10),
+  parseInt(process.env.CIRCUIT_BREAKER_COOLDOWN_MS ?? String(5 * 60_000), 10),
+);
+
 const jobProcessor = new SearchJobProcessor(
   [amadeusSource, kiwiSource, skyscannerSource, googleFlightsSource, travelpayoutsSource, duffelSource],
   vpnRouter,
   rawResultsQueue,
+  resilienceLayer,
 );
 
 const scheduler = new Scheduler(prisma, jobProcessor);
