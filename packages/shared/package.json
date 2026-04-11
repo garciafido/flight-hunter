@@ -27,7 +27,8 @@
     "test:coverage": "vitest run --coverage",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "db:migrate": "prisma migrate dev"
+    "db:migrate": "prisma migrate dev",
+    "seed:current": "tsx scripts/seed-current-search.ts"
   },
   "dependencies": {
     "pino": "^10.3.1",
