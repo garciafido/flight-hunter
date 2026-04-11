@@ -152,6 +152,14 @@ export default function AlertsPage() {
 
       {alerts.map((a: any) => {
         const fb = feedbackState[a.id];
+        const combo = a.comboInfo as { legs?: any[]; totalPrice?: number } | null;
+        const isCombo = !!(combo && Array.isArray(combo.legs) && combo.legs.length > 0);
+        const displayPrice = isCombo
+          ? combo!.totalPrice
+          : Number(a.flightResult?.pricePerPerson);
+        const displayCurrency = isCombo
+          ? combo!.legs![0]?.currency ?? a.flightResult?.currency
+          : a.flightResult?.currency;
         return (
           <div key={a.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, marginBottom: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -159,8 +167,17 @@ export default function AlertsPage() {
                 <AlertBadge level={a.level} />
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 500 }}>
-                    {a.flightResult?.currency} {Number(a.flightResult?.pricePerPerson).toLocaleString()}
+                    {displayCurrency} {Number(displayPrice ?? 0).toLocaleString()}
                     {' '}/ persona
+                    {isCombo && (
+                      <span style={{
+                        marginLeft: 8, fontSize: 11, fontWeight: 600,
+                        background: '#eff6ff', color: '#1d4ed8',
+                        padding: '2px 8px', borderRadius: 10,
+                      }}>
+                        {combo!.legs!.length} tramos
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
                     Enviado: {new Date(a.sentAt).toLocaleString('es-CL')} · Canales: {a.channelsSent?.join(', ')}
@@ -197,7 +214,7 @@ export default function AlertsPage() {
                     👎
                   </button>
                 </div>
-                {a.flightResult?.bookingUrl && (
+                {!isCombo && a.flightResult?.bookingUrl && (
                   <a href={a.flightResult.bookingUrl} target="_blank" rel="noopener noreferrer"
                     style={{ color: '#2563eb', fontSize: 13 }}>
                     Ver vuelo →
@@ -205,6 +222,65 @@ export default function AlertsPage() {
                 )}
               </div>
             </div>
+
+            {isCombo && (
+              <div style={{
+                marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9',
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}>
+                {combo!.legs!.map((leg: any, idx: number) => (
+                  <div key={idx} style={{
+                    display: 'grid',
+                    gridTemplateColumns: '24px 1fr auto auto',
+                    gap: 12, alignItems: 'center', fontSize: 13,
+                  }}>
+                    <span style={{
+                      width: 24, height: 24, borderRadius: '50%',
+                      background: '#eff6ff', color: '#1d4ed8',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 11, fontWeight: 600,
+                    }}>
+                      {idx + 1}
+                    </span>
+                    <div>
+                      <div style={{ fontWeight: 500 }}>
+                        {leg.departureAirport} → {leg.arrivalAirport}
+                        {leg.airline && (
+                          <span style={{ color: '#6b7280', fontWeight: 400, marginLeft: 8 }}>
+                            {leg.airline}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+                        Salida: {leg.departureTime ? new Date(leg.departureTime).toLocaleString('es-CL') : '—'}
+                        {leg.arrivalTime && (
+                          <> · Llegada: {new Date(leg.arrivalTime).toLocaleString('es-CL')}</>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>
+                      {leg.currency} {Number(leg.price ?? 0).toLocaleString()}
+                    </div>
+                    {leg.bookingUrl && (
+                      <a href={leg.bookingUrl} target="_blank" rel="noopener noreferrer"
+                        style={{ color: '#2563eb', fontSize: 12, whiteSpace: 'nowrap' }}>
+                        Reservar →
+                      </a>
+                    )}
+                  </div>
+                ))}
+                <div style={{
+                  marginTop: 4, paddingTop: 8, borderTop: '1px dashed #e5e7eb',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  fontSize: 13,
+                }}>
+                  <span style={{ color: '#6b7280' }}>Total del viaje (por persona)</span>
+                  <strong style={{ fontSize: 15, color: '#0f172a' }}>
+                    {displayCurrency} {Number(displayPrice ?? 0).toLocaleString()}
+                  </strong>
+                </div>
+              </div>
+            )}
           </div>
         );
       })}

@@ -159,6 +159,7 @@ export class NotifierWorker {
         level: alert.level,
         channelsSent,
         sentAt: new Date(),
+        comboInfo: alert.combo ? (alert.combo as object) : undefined,
       },
     });
   }

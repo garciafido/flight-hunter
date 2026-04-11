@@ -124,6 +124,9 @@ model Alert {
   sentAt         DateTime  @map("sent_at") @db.Timestamptz
   feedback       String?
   feedbackAt     DateTime? @map("feedback_at") @db.Timestamptz
+  // For split-mode combo alerts: full leg list + total trip price.
+  // Null for single-flight (roundtrip) alerts.
+  comboInfo      Json?     @map("combo_info")
 
   search       Search       @relation(fields: [searchId], references: [id])
   flightResult FlightResult @relation(fields: [flightResultId], references: [id])
