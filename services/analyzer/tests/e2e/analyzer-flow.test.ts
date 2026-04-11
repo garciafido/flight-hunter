@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { AnalyzerWorker } from '../../src/worker.js';
 import type { AnalyzerDeps } from '../../src/worker.js';
 import type { RawResultJob } from '@flight-hunter/shared';
-import type { Job } from 'bullmq';
 import { FilterEngine } from '../../src/filters/filter-engine.js';
 import { DealDetector } from '../../src/detection/deal-detector.js';
 import { HistoryService } from '../../src/detection/history.js';
@@ -10,8 +9,8 @@ import { OutlierDetector } from '../../src/detection/outlier-detector.js';
 import { Publisher } from '../../src/publisher.js';
 import type { PrismaClient } from '@flight-hunter/shared/db';
 
-function makeJob(data: RawResultJob): Job<RawResultJob> {
-  return { data, id: 'job-e2e' } as Job<RawResultJob>;
+function makeJob(data: RawResultJob): RawResultJob {
+  return data;
 }
 
 describe('Analyzer E2E Flow', () => {

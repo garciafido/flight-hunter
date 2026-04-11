@@ -2,7 +2,7 @@
 import { Worker, Queue } from 'bullmq';
 import { PrismaClient } from '@flight-hunter/shared/db';
 import { createLogger } from '@flight-hunter/shared/logger';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { QUEUE_NAMES, RawResultJobSchema } from '@flight-hunter/shared';
 import type { RawResultJob } from '@flight-hunter/shared';
 import { AnalyzerWorker } from './worker.js';
@@ -46,7 +46,7 @@ const worker = new Worker<RawResultJob>(
   QUEUE_NAMES.RAW_RESULTS,
   async (job) => {
     const data = RawResultJobSchema.parse(job.data);
-    await analyzerWorker.process({ ...job, data });
+    await analyzerWorker.process(data);
   },
   { connection: redis },
 );

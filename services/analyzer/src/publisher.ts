@@ -89,4 +89,55 @@ export class Publisher {
       await this.alertQueue.add('alert', alertJob);
     }
   }
+
+  /**
+   * Publish a combo alert (split-mode N legs). The total price represents
+   * the sum of all leg prices per person and is what the user actually pays.
+   */
+  async publishComboAlert(opts: {
+    searchId: string;
+    flightResultId: string;
+    legs: FlightResult[];
+    totalPricePerPerson: number;
+    score: number;
+    scoreBreakdown: ScoreBreakdown;
+    alertLevel: AlertLevel;
+  }): Promise<void> {
+    const { searchId, flightResultId, legs, totalPricePerPerson, score, scoreBreakdown, alertLevel } = opts;
+    const firstLeg = legs[0];
+    const lastLeg = legs[legs.length - 1];
+
+    const alertJob: AlertJob = {
+      searchId,
+      flightResultId,
+      level: alertLevel,
+      score,
+      scoreBreakdown,
+      flightSummary: {
+        price: totalPricePerPerson,
+        currency: firstLeg.currency,
+        airline: firstLeg.outbound.airline,
+        departureAirport: firstLeg.outbound.departure.airport,
+        arrivalAirport: lastLeg.outbound.arrival.airport,
+        departureTime: firstLeg.outbound.departure.time,
+        arrivalTime: lastLeg.outbound.arrival.time,
+        bookingUrl: firstLeg.bookingUrl,
+      },
+      combo: {
+        legs: legs.map((l) => ({
+          price: l.totalPrice,
+          currency: l.currency,
+          airline: l.outbound.airline,
+          departureAirport: l.outbound.departure.airport,
+          arrivalAirport: l.outbound.arrival.airport,
+          departureTime: l.outbound.departure.time,
+          arrivalTime: l.outbound.arrival.time,
+          bookingUrl: l.bookingUrl,
+        })),
+        totalPrice: totalPricePerPerson,
+      },
+    };
+
+    await this.alertQueue.add('alert', alertJob);
+  }
 }

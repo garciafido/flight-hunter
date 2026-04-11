@@ -3,15 +3,14 @@ import { AnalyzerWorker } from '../../src/worker.js';
 import type { AnalyzerDeps } from '../../src/worker.js';
 import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { RawResultJob } from '@flight-hunter/shared';
-import type { Job } from 'bullmq';
 import { FilterEngine } from '../../src/filters/filter-engine.js';
 import { DealDetector } from '../../src/detection/deal-detector.js';
 import { HistoryService } from '../../src/detection/history.js';
 import { OutlierDetector } from '../../src/detection/outlier-detector.js';
 import { Publisher } from '../../src/publisher.js';
 
-function makeRawJob(overrides: Partial<RawResultJob> = {}): Job<RawResultJob> {
-  const data: RawResultJob = {
+function makeRawJob(overrides: Partial<RawResultJob> = {}): RawResultJob {
+  return {
     searchId: 'search-1',
     source: 'kiwi',
     outbound: {
@@ -40,7 +39,6 @@ function makeRawJob(overrides: Partial<RawResultJob> = {}): Job<RawResultJob> {
     proxyRegion: 'CL',
     ...overrides,
   };
-  return { data, id: 'job-1' } as Job<RawResultJob>;
 }
 
 function makeSearchRecord(alertConfig = {}, filters = {}, stopover?: object) {

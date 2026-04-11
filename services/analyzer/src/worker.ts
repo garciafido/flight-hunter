@@ -1,4 +1,3 @@
-import type { Job } from 'bullmq';
 import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { RawResultJob, SearchConfig, FlightResult } from '@flight-hunter/shared';
 import { normalizePricePerPerson } from '@flight-hunter/shared';
@@ -32,9 +31,7 @@ export class AnalyzerWorker {
     this.scoringEngine = new ScoringEngine(resolveWeights());
   }
 
-  async process(job: Job<RawResultJob>): Promise<void> {
-    const data = job.data;
-
+  async process(data: RawResultJob): Promise<void> {
     // Find the search config
     const search = await this.deps.prisma.search.findUnique({
       where: { id: data.searchId },
@@ -48,9 +45,10 @@ export class AnalyzerWorker {
     const filters = searchConfig.filters;
     const alertConfig = searchConfig.alertConfig;
 
-    const flight = {
+    const flight: FlightResult = {
       ...data,
       scrapedAt: new Date(data.scrapedAt),
+      exchangeRateAt: data.exchangeRateAt ? new Date(data.exchangeRateAt) : undefined,
     };
 
     // Filter
@@ -104,13 +102,19 @@ export class AnalyzerWorker {
       { name: 'flexibility', score: flexibilityScore },
     ]);
 
-    // Detect deal
-    const alertLevel = this.deps.dealDetector.detect(
-      scoreResult.total,
-      pricePerPerson,
-      alertConfig,
-      history ?? undefined,
-    );
+    // Detect deal at the leg/result level.
+    // For SPLIT mode, individual legs MUST NOT trigger alerts because
+    // the user's price thresholds (max/target/dream) refer to the TOTAL
+    // trip cost. Only complete combos can trigger alerts in split mode.
+    const isSplitMode = (search as any).mode === 'split';
+    const alertLevel = isSplitMode
+      ? null
+      : this.deps.dealDetector.detect(
+          scoreResult.total,
+          pricePerPerson,
+          alertConfig,
+          history ?? undefined,
+        );
 
     // Outlier detection
     const outlier = await this.deps.outlierDetector.check(
@@ -205,8 +209,9 @@ export class AnalyzerWorker {
     );
 
     // Save the best combo to the FlightCombo table
+    let savedComboId: string | undefined;
     try {
-      await (this.deps.prisma as any).flightCombo.create({
+      const created = await (this.deps.prisma as any).flightCombo.create({
         data: {
           searchId,
           flightResultIds,
@@ -217,9 +222,29 @@ export class AnalyzerWorker {
           alertLevel: alertLevel ?? undefined,
         },
       });
+      savedComboId = created?.id as string | undefined;
     } catch (err) {
       // Non-fatal — combo saving should not break the main flow
       console.error('Failed to save FlightCombo:', err instanceof Error ? err.message : err);
+    }
+
+    // Publish the combo as an alert if it qualifies (split-mode only path).
+    // The total price here represents the FULL trip cost per person,
+    // which is what the user's thresholds actually refer to.
+    if (alertLevel && savedComboId) {
+      try {
+        await this.deps.publisher.publishComboAlert({
+          searchId,
+          flightResultId: savedComboId,
+          legs: best.combo,
+          totalPricePerPerson: totalPrice,
+          score: best.score,
+          scoreBreakdown: best.breakdown,
+          alertLevel,
+        });
+      } catch (err) {
+        console.error('Failed to publish combo alert:', err instanceof Error ? err.message : err);
+      }
     }
   }
 }
