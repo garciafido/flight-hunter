@@ -21,18 +21,45 @@ export function topNPerLeg(maxCombos: number, legCount: number): number {
 }
 
 /**
+ * A gap constraint between two consecutive legs (in days).
+ * minDays/maxDays apply to (leg[i+1].departure - leg[i].departure).
+ */
+export interface GapConstraint {
+  minDays: number;
+  maxDays: number;
+}
+
+export interface BuildCombosOptions {
+  /** How many cheapest results to keep per leg (default 5). */
+  topN?: number;
+  /**
+   * Per-position gap constraints. gapConstraints[i] is the constraint
+   * BETWEEN leg[i] and leg[i+1]. So an array of length N-1 for N legs.
+   * If a slot is missing or null, only the basic strict-temporal-order
+   * constraint applies for that gap.
+   */
+  gapConstraints?: Array<GapConstraint | null>;
+}
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
  * Generates all valid combinations (Cartesian product) of flight results per leg,
- * respecting temporal constraints: leg[i+1].outbound.departure must be after leg[i].outbound.departure.
- * Caps input at top N per leg by price.
- *
- * @param legResults - Array of flight results per leg.
- * @param topN - How many cheapest results to keep per leg (default 5). Use topNPerLeg() to derive from maxCombos.
+ * respecting temporal constraints. By default each leg's departure must be
+ * strictly after the previous leg's departure. Optional gap constraints can
+ * tighten this to a min/max number of days between consecutive legs (used by
+ * stopoverPlan to enforce "X days at the stopover city").
  */
 export function buildCombos(
   legResults: FlightResult[][],
-  topN = 5,
+  topNOrOptions: number | BuildCombosOptions = 5,
 ): FlightResult[][] {
   if (legResults.length === 0) return [];
+
+  const opts: BuildCombosOptions =
+    typeof topNOrOptions === 'number' ? { topN: topNOrOptions } : topNOrOptions;
+  const topN = opts.topN ?? 5;
+  const gapConstraints = opts.gapConstraints ?? [];
 
   // Limit each leg to top N cheapest results
   const capped = legResults.map((results) =>
@@ -40,6 +67,12 @@ export function buildCombos(
       .sort((a, b) => a.totalPrice - b.totalPrice)
       .slice(0, topN),
   );
+
+  function gapDays(prev: FlightResult, current: FlightResult): number {
+    const prevDep = new Date(prev.outbound.departure.time).getTime();
+    const thisDep = new Date(current.outbound.departure.time).getTime();
+    return Math.round((thisDep - prevDep) / MS_PER_DAY);
+  }
 
   // Cartesian product with temporal constraint
   function cartesian(legs: FlightResult[][], current: FlightResult[]): FlightResult[][] {
@@ -49,10 +82,18 @@ export function buildCombos(
     const combos: FlightResult[][] = [];
     for (const candidate of legs[idx]) {
       if (idx > 0) {
-        const prevDep = new Date(current[idx - 1].outbound.departure.time);
-        const thisDep = new Date(candidate.outbound.departure.time);
-        // Require this leg's departure to be strictly after previous leg's departure
-        if (thisDep <= prevDep) continue;
+        const prev = current[idx - 1];
+        const prevDepMs = new Date(prev.outbound.departure.time).getTime();
+        const thisDepMs = new Date(candidate.outbound.departure.time).getTime();
+        // Always require strict temporal order
+        if (thisDepMs <= prevDepMs) continue;
+
+        // If a gap constraint is defined for this transition, enforce it
+        const constraint = gapConstraints[idx - 1];
+        if (constraint) {
+          const days = gapDays(prev, candidate);
+          if (days < constraint.minDays || days > constraint.maxDays) continue;
+        }
       }
       const next = cartesian(legs, [...current, candidate]);
       combos.push(...next);

@@ -46,9 +46,14 @@ export default function AlertsPage() {
     if (!iso) return '';
     const d = new Date(iso);
     const isMidnightUtc = d.getUTCHours() === 0 && d.getUTCMinutes() === 0;
-    return isMidnightUtc
-      ? d.toLocaleDateString('es-CL', { timeZone: 'UTC' })
-      : d.toLocaleString('es-CL', { timeZone: 'UTC' });
+    if (isMidnightUtc) {
+      return d.toLocaleDateString('es-CL', { timeZone: 'UTC' });
+    }
+    return d.toLocaleString('es-CL', {
+      timeZone: 'UTC',
+      dateStyle: 'short',
+      timeStyle: 'short',
+    });
   }
 
   function buildShareText(alert: any, searchName: string): string {
@@ -72,7 +77,7 @@ export default function AlertsPage() {
       combo!.legs!.forEach((leg: any, idx: number) => {
         const dep = formatDate(leg.departureTime);
         lines.push(`*${idx + 1}.* ${leg.departureAirport} → ${leg.arrivalAirport} — ${leg.airline}`);
-        if (dep) lines.push(`   📅 ${dep}`);
+        if (dep) lines.push(`   📅 ${dep} (hora local)`);
         lines.push(`   💵 ${leg.currency} ${leg.price}`);
         if (leg.bookingUrl) lines.push(`   🔗 ${leg.bookingUrl}`);
         lines.push('');
@@ -343,23 +348,38 @@ export default function AlertsPage() {
                       </div>
                       <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
                         {(() => {
-                          // If the time encodes midnight UTC, the source had no real time —
-                          // show date only to avoid showing a fake "9 PM" coming from the
-                          // local-timezone conversion of 00:00 UTC.
+                          // We store the times as the wall-clock at the airport
+                          // (encoded into UTC just to fit the schema). Render them
+                          // verbatim with timeZone: 'UTC' so the user sees the same
+                          // hours that appeared on Google Flights, and label them
+                          // as "hora local del vuelo" so it's not ambiguous.
                           const fmt = (iso: string | undefined) => {
                             if (!iso) return null;
                             const d = new Date(iso);
                             const isMidnightUtc = d.getUTCHours() === 0 && d.getUTCMinutes() === 0;
                             return isMidnightUtc
-                              ? d.toLocaleDateString('es-CL', { timeZone: 'UTC' })
-                              : d.toLocaleString('es-CL', { timeZone: 'UTC' });
+                              ? { text: d.toLocaleDateString('es-CL', { timeZone: 'UTC' }), withTime: false }
+                              : {
+                                  text: d.toLocaleString('es-CL', {
+                                    timeZone: 'UTC',
+                                    dateStyle: 'short',
+                                    timeStyle: 'short',
+                                  }),
+                                  withTime: true,
+                                };
                           };
                           const dep = fmt(leg.departureTime);
                           const arr = fmt(leg.arrivalTime);
+                          const hasAnyTime = (dep && dep.withTime) || (arr && arr.withTime);
                           return (
                             <>
-                              Salida: {dep ?? '—'}
-                              {arr && <> · Llegada: {arr}</>}
+                              Salida: {dep?.text ?? '—'}
+                              {arr && <> · Llegada: {arr.text}</>}
+                              {hasAnyTime && (
+                                <span style={{ marginLeft: 6, color: '#cbd5e1', fontStyle: 'italic' }}>
+                                  (hora local del vuelo)
+                                </span>
+                              )}
                             </>
                           );
                         })()}

@@ -211,7 +211,28 @@ export class AnalyzerWorker {
     // Need results for all legs to build combos
     if (legResultArrays.some((arr) => arr.length === 0)) return;
 
-    const combos = buildCombos(legResultArrays, TOP_N);
+    // Build per-gap constraints when running under a stopoverPlan.
+    // For 3-leg plans the gap rules are:
+    //   position='start': leg0→leg1 must equal stopover (3-4 days in LIM),
+    //                     leg1→leg2 must be at least MIN_VACATION_DAYS in destination
+    //   position='end':   leg0→leg1 must be at least MIN_VACATION_DAYS in destination,
+    //                     leg1→leg2 must equal stopover (3-4 days in LIM)
+    const MIN_VACATION_DAYS = 5;
+    const MAX_VACATION_DAYS = 60;
+    let gapConstraints: Array<{ minDays: number; maxDays: number } | null> | undefined;
+    if (stopoverPlan && legCount === 3) {
+      const stop = { minDays: stopoverPlan.minDays, maxDays: stopoverPlan.maxDays };
+      const vacation = { minDays: MIN_VACATION_DAYS, maxDays: MAX_VACATION_DAYS };
+      // planIndex 0 == 'start' position, planIndex 1 == 'end' position when 'any'
+      const isStartPlan =
+        stopoverPlan.position === 'start' ||
+        (stopoverPlan.position === 'any' && planIndex === 0);
+      gapConstraints = isStartPlan
+        ? [stop, vacation]      // start: stopover first, then vacation
+        : [vacation, stop];     // end:   vacation first, then stopover
+    }
+
+    const combos = buildCombos(legResultArrays, { topN: TOP_N, gapConstraints });
     if (combos.length === 0) return;
 
     // Score each combo and pick the best one
