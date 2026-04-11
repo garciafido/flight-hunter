@@ -64,6 +64,26 @@ export async function fetchAlerts(params?: {
   return res.json();
 }
 
+export async function deleteAlerts(filter: {
+  all?: boolean;
+  searchId?: string;
+  before?: string;
+  olderThanHours?: number;
+  olderThanDays?: number;
+  keepLast?: number;
+}): Promise<{ deleted: number }> {
+  const qs = new URLSearchParams();
+  if (filter.all) qs.set('all', 'true');
+  if (filter.searchId) qs.set('searchId', filter.searchId);
+  if (filter.before) qs.set('before', filter.before);
+  if (filter.olderThanHours != null) qs.set('olderThanHours', filter.olderThanHours.toString());
+  if (filter.olderThanDays != null) qs.set('olderThanDays', filter.olderThanDays.toString());
+  if (filter.keepLast != null) qs.set('keepLast', filter.keepLast.toString());
+  const res = await fetch(`${BASE}/alerts?${qs}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete alerts');
+  return res.json();
+}
+
 export async function fetchProxies(): Promise<any[]> {
   const res = await fetch(`${BASE}/proxies`);
   if (!res.ok) throw new Error('Failed to fetch proxies');
