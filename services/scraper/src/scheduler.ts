@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { SearchConfig } from '@flight-hunter/shared';
 import type { SearchJobProcessor } from './jobs/search-job.js';
 

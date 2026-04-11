@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { PriceHistory } from '../scoring/price-score.js';
 
 export class HistoryService {

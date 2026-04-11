@@ -1,4 +1,4 @@
-import { PrismaClient } from '@flight-hunter/shared';
+import { PrismaClient } from '@flight-hunter/shared/db';
 
 const globalForPrisma = globalThis as unknown as { prisma: InstanceType<typeof PrismaClient> };
 

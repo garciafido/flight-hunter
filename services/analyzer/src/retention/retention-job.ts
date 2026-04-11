@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 
 export interface RetentionResult {
   deletedFlightResults: number;

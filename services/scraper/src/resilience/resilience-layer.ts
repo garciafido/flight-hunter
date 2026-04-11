@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 import { CircuitBreaker } from './circuit-breaker.js';
 import { RateLimiter } from './rate-limiter.js';
 import { SourceMetricsService } from './source-metrics.js';

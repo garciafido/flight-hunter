@@ -8,7 +8,7 @@ import { DealDetector } from '../../src/detection/deal-detector.js';
 import { HistoryService } from '../../src/detection/history.js';
 import { OutlierDetector } from '../../src/detection/outlier-detector.js';
 import { Publisher } from '../../src/publisher.js';
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 
 function makeJob(data: RawResultJob): Job<RawResultJob> {
   return { data, id: 'job-e2e' } as Job<RawResultJob>;

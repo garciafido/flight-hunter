@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OutlierDetector } from '../../../src/detection/outlier-detector.js';
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 
 function makePrisma(recentRows: Array<{ pricePerPerson: number; source: string }> = []) {
   return {

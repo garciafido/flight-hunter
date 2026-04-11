@@ -1,6 +1,6 @@
 /* v8 ignore file */
 import { Queue } from 'bullmq';
-import { PrismaClient } from '@flight-hunter/shared';
+import { PrismaClient } from '@flight-hunter/shared/db';
 import Redis from 'ioredis';
 import { QUEUE_NAMES } from '@flight-hunter/shared';
 import { KiwiSource } from './sources/kiwi.js';

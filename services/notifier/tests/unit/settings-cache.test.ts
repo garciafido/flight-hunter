@@ -8,7 +8,7 @@ import {
   getSlackWebhookUrl,
   getDiscordWebhookUrl,
 } from '../../src/settings-cache.js';
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 
 function makePrisma(emailsPaused: boolean) {
   return {

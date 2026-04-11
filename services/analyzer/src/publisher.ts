@@ -1,5 +1,5 @@
 import type { Queue } from 'bullmq';
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { FlightResult, AlertLevel, ScoreBreakdown } from '@flight-hunter/shared';
 import type { AlertJob } from '@flight-hunter/shared';
 import { PriceAggregator } from './aggregation/price-aggregator.js';

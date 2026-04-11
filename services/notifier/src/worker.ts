@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { AlertJob } from '@flight-hunter/shared';
 import type { TelegramChannel } from './channels/telegram.js';
 import type { EmailChannel } from './channels/email.js';

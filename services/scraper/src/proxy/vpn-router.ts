@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 
 export class VpnRouter {
   private readonly rotationIndex = new Map<string, number>();

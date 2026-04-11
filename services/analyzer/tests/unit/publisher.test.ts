@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Publisher } from '../../src/publisher.js';
 import type { FlightResult, ScoreBreakdown } from '@flight-hunter/shared';
 import type { Queue } from 'bullmq';
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 
 function makeFlight(overrides: Partial<FlightResult> = {}): FlightResult {
   return {

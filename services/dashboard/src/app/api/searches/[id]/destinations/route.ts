@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { Prisma } from '@flight-hunter/shared';
+import { Prisma } from '@flight-hunter/shared/db';
 
 interface DestinationRow {
   iata: string;

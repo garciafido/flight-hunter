@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { CircuitState } from './circuit-breaker.js';
 
 export class SourceMetricsService {

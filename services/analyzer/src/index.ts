@@ -1,6 +1,7 @@
 /* v8 ignore file */
 import { Worker, Queue } from 'bullmq';
-import { PrismaClient, createLogger } from '@flight-hunter/shared';
+import { PrismaClient } from '@flight-hunter/shared/db';
+import { createLogger } from '@flight-hunter/shared/logger';
 import Redis from 'ioredis';
 import { QUEUE_NAMES, RawResultJobSchema } from '@flight-hunter/shared';
 import type { RawResultJob } from '@flight-hunter/shared';

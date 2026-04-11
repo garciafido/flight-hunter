@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { PricePredictor } from '../../../src/prediction/price-predictor.js';
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 
 function makePrisma(rows: Array<{ date: Date; minPrice: number | string }>) {
   return {

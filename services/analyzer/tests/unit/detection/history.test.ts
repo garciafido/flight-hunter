@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { HistoryService } from '../../../src/detection/history.js';
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 
 function makePrismaMock(aggregateResult: {
   _avg: { pricePerPerson: number | null };

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AnalyzerWorker } from '../../src/worker.js';
 import type { AnalyzerDeps } from '../../src/worker.js';
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { RawResultJob } from '@flight-hunter/shared';
 import type { Job } from 'bullmq';
 import { FilterEngine } from '../../src/filters/filter-engine.js';

@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { EmailChannel } from '../channels/email.js';
 import { formatDigest, formatDigestDate, type DigestSearch } from '../formatter/digest-fmt.js';
 

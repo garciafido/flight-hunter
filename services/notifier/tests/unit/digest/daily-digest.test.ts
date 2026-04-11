@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DailyDigest } from '../../../src/digest/daily-digest.js';
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { EmailChannel } from '../../../src/channels/email.js';
 
 function makeResult(overrides: any = {}) {

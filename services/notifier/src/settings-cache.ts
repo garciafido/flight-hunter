@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 
 const CACHE_TTL_MS = 30 * 1000; // 30 seconds
 

@@ -1,5 +1,5 @@
 import type { Job } from 'bullmq';
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { RawResultJob, SearchConfig, FlightResult } from '@flight-hunter/shared';
 import { normalizePricePerPerson } from '@flight-hunter/shared';
 import { ScoringEngine } from './scoring/engine.js';

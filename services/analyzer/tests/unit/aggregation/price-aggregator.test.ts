@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PriceAggregator } from '../../../src/aggregation/price-aggregator.js';
-import type { PrismaClient } from '@flight-hunter/shared';
+import type { PrismaClient } from '@flight-hunter/shared/db';
 
 function makePrisma(aggOverrides: any = {}, existing: any = null) {
   return {
