@@ -1,13 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import { createSearch } from '@/lib/api';
+import { createSearch, updateSearch } from '@/lib/api';
 
 interface SearchFormProps {
+  /** When set, the form is in edit mode and submits PUT to /api/searches/[id]. */
+  searchId?: string;
+  /** Pre-populated form state (e.g. from an existing search row). */
+  initialState?: Partial<FormState>;
   onCreated?: (search: any) => void;
+  onUpdated?: (search: any) => void;
 }
 
-interface WaypointFormEntry {
+export interface WaypointFormEntry {
   id: string;
   airport: string;
   type: 'stay' | 'connection';
@@ -17,7 +22,7 @@ interface WaypointFormEntry {
   pin: 'first' | 'last' | 'none';
 }
 
-interface FormState {
+export interface FormState {
   name: string;
   origin: string;
   passengers: number;
@@ -57,33 +62,94 @@ function newWaypointEntry(): WaypointFormEntry {
   };
 }
 
-export function SearchForm({ onCreated }: SearchFormProps) {
+/**
+ * Converts a Search row (as returned by /api/searches/[id]) into FormState.
+ * Used by the edit page to pre-populate the form.
+ */
+export function searchRowToFormState(row: any): FormState {
+  const filters = row.filters ?? {};
+  const alertConfig = row.alertConfig ?? {};
+  const wps = Array.isArray(row.waypoints) ? row.waypoints : [];
+  return {
+    name: row.name ?? '',
+    origin: row.origin ?? '',
+    passengers: row.passengers ?? 1,
+    departureFrom: typeof row.departureFrom === 'string'
+      ? row.departureFrom.slice(0, 10)
+      : '',
+    departureTo: typeof row.departureTo === 'string'
+      ? row.departureTo.slice(0, 10)
+      : '',
+    maxConnectionHours: row.maxConnectionHours ?? 6,
+    waypoints: wps.length > 0
+      ? wps.map((wp: any) => ({
+          id: crypto.randomUUID(),
+          airport: wp.airport ?? '',
+          type: wp.gap?.type === 'connection' ? 'connection' : 'stay',
+          minDays: wp.gap?.minDays ?? 1,
+          maxDays: wp.gap?.maxDays ?? 7,
+          maxHours: wp.gap?.maxHours ?? 6,
+          pin: wp.pin === 'first' || wp.pin === 'last' ? wp.pin : 'none',
+        }))
+      : [newWaypointEntry()],
+    requireCarryOn: filters.requireCarryOn ?? false,
+    maxUnplannedStops: filters.maxUnplannedStops ?? 1,
+    maxTotalTravelHours: filters.maxTotalTravelTime ?? 0,
+    airlineBlacklist: Array.isArray(filters.airlineBlacklist) ? filters.airlineBlacklist.join(', ') : '',
+    outboundCheckedBags: row.outboundCheckedBags ?? 0,
+    returnCheckedBags: row.returnCheckedBags ?? 0,
+    scoreThresholdInfo: alertConfig.scoreThresholds?.info ?? 30,
+    scoreThresholdGood: alertConfig.scoreThresholds?.good ?? 60,
+    scoreThresholdUrgent: alertConfig.scoreThresholds?.urgent ?? 80,
+    maxPricePerPerson: alertConfig.maxPricePerPerson ?? '',
+    targetPricePerPerson: alertConfig.targetPricePerPerson ?? '',
+    dreamPricePerPerson: alertConfig.dreamPricePerPerson ?? '',
+    currency: alertConfig.currency ?? 'USD',
+    proxyRegions: Array.isArray(row.proxyRegions) ? row.proxyRegions : [],
+    scanIntervalMin: row.scanIntervalMin ?? 60,
+  };
+}
+
+const DEFAULT_FORM_STATE: FormState = {
+  name: '',
+  origin: '',
+  passengers: 1,
+  departureFrom: '',
+  departureTo: '',
+  maxConnectionHours: 6,
+  waypoints: [],
+  requireCarryOn: false,
+  maxUnplannedStops: 1,
+  maxTotalTravelHours: 0,
+  airlineBlacklist: '',
+  outboundCheckedBags: 0,
+  returnCheckedBags: 0,
+  scoreThresholdInfo: 30,
+  scoreThresholdGood: 60,
+  scoreThresholdUrgent: 80,
+  maxPricePerPerson: '',
+  targetPricePerPerson: '',
+  dreamPricePerPerson: '',
+  currency: 'USD',
+  proxyRegions: [],
+  scanIntervalMin: 60,
+};
+
+export function SearchForm({ searchId, initialState, onCreated, onUpdated }: SearchFormProps) {
+  const isEdit = !!searchId;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
-  const [form, setForm] = useState<FormState>({
-    name: '',
-    origin: '',
-    passengers: 1,
-    departureFrom: '',
-    departureTo: '',
-    maxConnectionHours: 6,
-    waypoints: [newWaypointEntry()],
-    requireCarryOn: false,
-    maxUnplannedStops: 1,
-    maxTotalTravelHours: 0,
-    airlineBlacklist: '',
-    outboundCheckedBags: 0,
-    returnCheckedBags: 0,
-    scoreThresholdInfo: 30,
-    scoreThresholdGood: 60,
-    scoreThresholdUrgent: 80,
-    maxPricePerPerson: '',
-    targetPricePerPerson: '',
-    dreamPricePerPerson: '',
-    currency: 'USD',
-    proxyRegions: [],
-    scanIntervalMin: 60,
+  const [form, setForm] = useState<FormState>(() => {
+    const base = initialState
+      ? { ...DEFAULT_FORM_STATE, ...initialState }
+      : DEFAULT_FORM_STATE;
+    return {
+      ...base,
+      // Always have at least one waypoint card to edit
+      waypoints: base.waypoints.length > 0 ? base.waypoints : [newWaypointEntry()],
+    };
   });
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
@@ -212,10 +278,17 @@ export function SearchForm({ onCreated }: SearchFormProps) {
         scanIntervalMin: Number(form.scanIntervalMin),
       };
 
-      const result = await createSearch(payload);
-      onCreated?.(result);
+      if (isEdit && searchId) {
+        const result = await updateSearch(searchId, payload);
+        onUpdated?.(result);
+        setSavedMessage('Cambios guardados. Los servicios los aplicarán en el próximo tick.');
+        setTimeout(() => setSavedMessage(null), 4000);
+      } else {
+        const result = await createSearch(payload);
+        onCreated?.(result);
+      }
     } catch (err: any) {
-      setError(err.message ?? 'Error al crear búsqueda');
+      setError(err.message ?? (isEdit ? 'Error al guardar la búsqueda' : 'Error al crear búsqueda'));
     } finally {
       setLoading(false);
     }
@@ -582,13 +655,20 @@ export function SearchForm({ onCreated }: SearchFormProps) {
         </div>
       </div>
 
-      <button
-        type="submit"
-        disabled={loading}
-        style={{ background: '#2563eb', color: '#fff', padding: '10px 24px', borderRadius: 6, border: 'none', fontSize: 15, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}
-      >
-        {loading ? 'Creando...' : 'Crear Búsqueda'}
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button
+          type="submit"
+          disabled={loading}
+          style={{ background: '#2563eb', color: '#fff', padding: '10px 24px', borderRadius: 6, border: 'none', fontSize: 15, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}
+        >
+          {loading
+            ? (isEdit ? 'Guardando...' : 'Creando...')
+            : (isEdit ? 'Guardar cambios' : 'Crear Búsqueda')}
+        </button>
+        {savedMessage && (
+          <span style={{ fontSize: 13, color: '#16a34a' }}>{savedMessage}</span>
+        )}
+      </div>
     </form>
   );
 }

@@ -1,31 +1,56 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { fetchSearch } from '@/lib/api';
+import { SearchForm, searchRowToFormState } from '@/components/search-form';
+import type { FormState } from '@/components/search-form';
 
 export default function SearchSettingsPage() {
   const { id } = useParams<{ id: string }>();
-  return (
-    <div style={{ padding: 32, maxWidth: 600 }}>
-      <Link href={`/searches/${id}`} style={{ color: '#2563eb', fontSize: 14 }}>← Volver a la búsqueda</Link>
-      <h1 style={{ margin: '12px 0 24px', fontSize: 24 }}>Configuración</h1>
-      <div style={{
-        background: '#fef3c7',
-        border: '1px solid #fcd34d',
-        borderRadius: 8,
-        padding: 16,
-        color: '#78350f',
-      }}>
-        <p style={{ margin: '0 0 8px', fontWeight: 600 }}>Edición no disponible en el modelo waypoints</p>
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>
-          Esta vista todavía no fue adaptada al nuevo modelo de waypoints. Para modificar
-          una búsqueda existente, borrala desde el listado y volvé a crearla desde{' '}
-          <Link href="/searches/new" style={{ color: '#92400e', textDecoration: 'underline' }}>
-            /searches/new
-          </Link>
-          .
-        </p>
+  const router = useRouter();
+  const [initialState, setInitialState] = useState<Partial<FormState> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchSearch(id)
+      .then((row) => setInitialState(searchRowToFormState(row)))
+      .catch((err) => setError(err?.message ?? 'Error al cargar la búsqueda'));
+  }, [id]);
+
+  if (error) {
+    return (
+      <div style={{ padding: 32, maxWidth: 700 }}>
+        <Link href={`/searches/${id}`} style={{ color: '#2563eb', fontSize: 14 }}>← Volver a la búsqueda</Link>
+        <h1 style={{ margin: '12px 0 24px', fontSize: 24 }}>Configuración</h1>
+        <div style={{ color: '#dc2626' }}>{error}</div>
       </div>
+    );
+  }
+
+  if (!initialState) {
+    return (
+      <div style={{ padding: 32, maxWidth: 700 }}>
+        <Link href={`/searches/${id}`} style={{ color: '#2563eb', fontSize: 14 }}>← Volver a la búsqueda</Link>
+        <h1 style={{ margin: '12px 0 24px', fontSize: 24 }}>Configuración</h1>
+        <div>Cargando...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: 32, maxWidth: 700 }}>
+      <Link href={`/searches/${id}`} style={{ color: '#2563eb', fontSize: 14 }}>← Volver a la búsqueda</Link>
+      <h1 style={{ margin: '12px 0 24px', fontSize: 24 }}>Editar búsqueda</h1>
+      <SearchForm
+        searchId={id}
+        initialState={initialState}
+        onUpdated={() => {
+          // Optionally bounce back to detail page after a moment
+          setTimeout(() => router.push(`/searches/${id}`), 1500);
+        }}
+      />
     </div>
   );
 }
