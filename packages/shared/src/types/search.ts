@@ -1,27 +1,13 @@
-export type DestinationMode = 'single' | 'flexible';
+import type { ProxyRegion } from './flight.js';
 
-export type StopoverPlanPosition = 'start' | 'end' | 'any';
+export type WaypointGap =
+  | { type: 'stay'; minDays: number; maxDays: number }
+  | { type: 'connection'; maxHours: number };
 
-export interface StopoverPlan {
-  airport: string;
-  minDays: number;
-  maxDays: number;
-  position: StopoverPlanPosition;
-  /**
-   * When false, the system also searches direct flights (without the
-   * extended stopover) and surfaces them as alternative alerts. When true
-   * or omitted, only combos that include the planned stopover are considered.
-   */
-  required?: boolean;
-}
-
-export type StopoverLeg = 'outbound' | 'inbound' | 'any';
-
-export interface StopoverConfig {
-  airport: string;
-  minDays: number;
-  maxDays: number;
-  leg?: StopoverLeg; // Defaults to 'any'
+export interface Waypoint {
+  airport: string;          // IATA code, e.g. 'LIM'
+  gap: WaypointGap;
+  pin?: 'first' | 'last';   // optional position pin
 }
 
 export interface TimeRange {
@@ -37,8 +23,6 @@ export interface SearchFilters {
   departureTimeRange?: TimeRange;
   arrivalTimeRange?: TimeRange;
   maxUnplannedStops: number;
-  minConnectionTime: number;
-  maxConnectionTime: number;
   requireCarryOn: boolean;
   requireCheckedBag?: boolean;
   maxTotalTravelTime: number;
@@ -52,39 +36,18 @@ export interface SearchAlertConfig {
   currency: string;
 }
 
-export type SearchMode = 'roundtrip' | 'split';
-
-export interface SearchLeg {
-  origin: string;
-  destination: string;
-  departureFrom: Date;
-  departureTo: Date;
-  stopover?: StopoverConfig;
-}
-
 export interface SearchConfig {
   id: string;
   name: string;
-  origin: string;
-  destination: string;
-  stopover?: StopoverConfig;
+  origin: string;             // IATA, e.g. 'BUE'
   departureFrom: Date;
   departureTo: Date;
-  returnMinDays: number;
-  returnMaxDays: number;
   passengers: number;
-  filters: SearchFilters;
-  alertConfig: SearchAlertConfig;
-  proxyRegions: string[];
+  waypoints: Waypoint[];      // 1+ stops; trip always returns to origin
+  maxConnectionHours: number; // global default for connection gaps
+  proxyRegions: ProxyRegion[];
   scanIntervalMin: number;
   active: boolean;
-  mode?: SearchMode; // defaults to 'roundtrip'
-  legs?: SearchLeg[]; // only used when mode='split'
-  destinationMode?: DestinationMode; // defaults to 'single'
-  destinationCandidates?: string[]; // IATA codes or region preset keys
-  windowMode?: boolean; // defaults to false
-  windowDuration?: number; // trip length in days
-  windowFlexibility?: number; // ± days around windowDuration
-  maxCombos?: number; // cap for split mode combos, defaults to 100
-  stopoverPlan?: StopoverPlan; // first-class extended stopover plan
+  filters: SearchFilters;
+  alertConfig: SearchAlertConfig;
 }

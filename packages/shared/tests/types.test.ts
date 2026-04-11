@@ -8,11 +8,11 @@ import type {
   ProxyRegion,
 } from '../src/types/flight.js';
 import type {
-  StopoverConfig,
   TimeRange,
   SearchFilters,
   SearchAlertConfig,
   SearchConfig,
+  Waypoint,
 } from '../src/types/search.js';
 import type { ProxyType, ProxyAuth, ProxyConfig } from '../src/types/proxy.js';
 import type {
@@ -140,13 +140,6 @@ describe('Flight types', () => {
 });
 
 describe('Search types', () => {
-  it('StopoverConfig holds airport and day range', () => {
-    const s: StopoverConfig = { airport: 'BOG', minDays: 1, maxDays: 3 };
-    expect(s.airport).toBe('BOG');
-    expect(s.minDays).toBe(1);
-    expect(s.maxDays).toBe(3);
-  });
-
   it('TimeRange holds earliest and latest', () => {
     const t: TimeRange = { earliest: '06:00', latest: '22:00' };
     expect(t.earliest).toBe('06:00');
@@ -160,8 +153,6 @@ describe('Search types', () => {
       airportPreferred: { SCL: ['MIA', 'JFK'] },
       airportBlacklist: {},
       maxUnplannedStops: 1,
-      minConnectionTime: 60,
-      maxConnectionTime: 240,
       requireCarryOn: true,
       maxTotalTravelTime: 1440,
     };
@@ -180,8 +171,6 @@ describe('Search types', () => {
       departureTimeRange: { earliest: '06:00', latest: '20:00' },
       arrivalTimeRange: { earliest: '08:00', latest: '23:59' },
       maxUnplannedStops: 0,
-      minConnectionTime: 90,
-      maxConnectionTime: 180,
       requireCarryOn: false,
       requireCheckedBag: true,
       maxTotalTravelTime: 720,
@@ -201,25 +190,23 @@ describe('Search types', () => {
     expect(a.dreamPricePerPerson).toBeUndefined();
   });
 
-  it('SearchConfig can be constructed with all fields', () => {
+  it('SearchConfig can be constructed with waypoints', () => {
+    const wp: Waypoint = { airport: 'MIA', gap: { type: 'stay', minDays: 7, maxDays: 14 } };
     const c: SearchConfig = {
       id: 'cfg-1',
       name: 'SCL to MIA',
       origin: 'SCL',
-      destination: 'MIA',
       departureFrom: new Date('2025-07-01'),
       departureTo: new Date('2025-07-31'),
-      returnMinDays: 7,
-      returnMaxDays: 14,
       passengers: 2,
+      waypoints: [wp],
+      maxConnectionHours: 6,
       filters: {
         airlineBlacklist: [],
         airlinePreferred: [],
         airportPreferred: {},
         airportBlacklist: {},
         maxUnplannedStops: 1,
-        minConnectionTime: 60,
-        maxConnectionTime: 300,
         requireCarryOn: true,
         maxTotalTravelTime: 1440,
       },
@@ -233,7 +220,7 @@ describe('Search types', () => {
       active: true,
     };
     expect(c.id).toBe('cfg-1');
-    expect(c.stopover).toBeUndefined();
+    expect(c.waypoints).toHaveLength(1);
     expect(c.active).toBe(true);
   });
 });
