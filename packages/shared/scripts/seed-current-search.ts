@@ -30,8 +30,8 @@ async function main() {
         airportPreferred: {},
         airportBlacklist: {},
         maxUnplannedStops: 1,
-        requireCarryOn: false,
-        maxTotalTravelTime: 1440,
+        requireCarryOn: true,
+        maxTotalTravelTime: 0, // 0 = unlimited
       },
       alertConfig: {
         scoreThresholds: { info: 60, good: 75, urgent: 90 },

@@ -29,11 +29,45 @@ function fillFirstWaypoint(airport: string) {
 }
 
 describe('SearchForm', () => {
-  it('renders the three sections', () => {
+  it('renders the four sections', () => {
     render(<SearchForm />);
     expect(screen.getByText('Información general')).toBeDefined();
     expect(screen.getByText('Itinerario')).toBeDefined();
     expect(screen.getByText('Alertas')).toBeDefined();
+    expect(screen.getByText('Filtros del vuelo')).toBeDefined();
+  });
+
+  it('builds a filter payload from structured inputs', async () => {
+    (createSearch as any).mockResolvedValue({ id: 'x' });
+    render(<SearchForm />);
+    fillBasics();
+    fillFirstWaypoint('LIM');
+
+    // Toggle requireCarryOn
+    const carryOn = screen.getByTestId('filter-carryon') as HTMLInputElement;
+    fireEvent.click(carryOn);
+
+    // Set max stops to 0
+    const maxStops = screen.getByTestId('filter-maxstops') as HTMLInputElement;
+    fireEvent.change(maxStops, { target: { name: 'maxUnplannedStops', value: '0' } });
+
+    // Set max travel hours to 24
+    const maxTravel = screen.getByTestId('filter-maxtravel') as HTMLInputElement;
+    fireEvent.change(maxTravel, { target: { name: 'maxTotalTravelHours', value: '24' } });
+
+    // Set blacklist
+    const blacklist = screen.getByTestId('filter-blacklist') as HTMLInputElement;
+    fireEvent.change(blacklist, { target: { name: 'airlineBlacklist', value: 'JetSMART, Sky Airline' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /crear búsqueda/i }));
+
+    await waitFor(() => {
+      const payload = (createSearch as any).mock.calls[0][0];
+      expect(payload.filters.requireCarryOn).toBe(true);
+      expect(payload.filters.maxUnplannedStops).toBe(0);
+      expect(payload.filters.maxTotalTravelTime).toBe(24);
+      expect(payload.filters.airlineBlacklist).toEqual(['JetSMART', 'Sky Airline']);
+    });
   });
 
   it('starts with one default waypoint card', () => {

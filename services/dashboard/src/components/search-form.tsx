@@ -25,7 +25,12 @@ interface FormState {
   departureTo: string;
   maxConnectionHours: number;
   waypoints: WaypointFormEntry[];
-  filtersJson: string;
+  // Filters (structured)
+  requireCarryOn: boolean;
+  maxUnplannedStops: number;
+  maxTotalTravelHours: number; // 0 = unlimited
+  airlineBlacklist: string;     // comma-separated, parsed to string[] on submit
+  // Alerts
   scoreThresholdInfo: number;
   scoreThresholdGood: number;
   scoreThresholdUrgent: number;
@@ -61,7 +66,10 @@ export function SearchForm({ onCreated }: SearchFormProps) {
     departureTo: '',
     maxConnectionHours: 6,
     waypoints: [newWaypointEntry()],
-    filtersJson: '{}',
+    requireCarryOn: false,
+    maxUnplannedStops: 1,
+    maxTotalTravelHours: 0,
+    airlineBlacklist: '',
     scoreThresholdInfo: 30,
     scoreThresholdGood: 60,
     scoreThresholdUrgent: 80,
@@ -74,7 +82,12 @@ export function SearchForm({ onCreated }: SearchFormProps) {
   });
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
-    const { name, value, type } = e.target;
+    const target = e.target;
+    const { name, value, type } = target;
+    if (type === 'checkbox' && target instanceof HTMLInputElement) {
+      setForm(prev => ({ ...prev, [name]: target.checked }));
+      return;
+    }
     setForm(prev => ({
       ...prev,
       [name]: type === 'number' ? (value === '' ? '' : Number(value)) : value,
@@ -147,8 +160,20 @@ export function SearchForm({ onCreated }: SearchFormProps) {
 
     setLoading(true);
     try {
-      let filters: any = {};
-      try { filters = JSON.parse(form.filtersJson); } catch { filters = {}; }
+      const airlineBlacklist = form.airlineBlacklist
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      const filters = {
+        airlineBlacklist,
+        airlinePreferred: [],
+        airportPreferred: {},
+        airportBlacklist: {},
+        maxUnplannedStops: Number(form.maxUnplannedStops),
+        requireCarryOn: form.requireCarryOn,
+        maxTotalTravelTime: Number(form.maxTotalTravelHours),
+      };
 
       const payload = {
         name: form.name,
@@ -453,14 +478,62 @@ export function SearchForm({ onCreated }: SearchFormProps) {
           <input name="scanIntervalMin" value={form.scanIntervalMin} onChange={handleChange} type="number" min="5" required style={{ ...inputStyle, width: 120 }} />
         </div>
 
+      </div>
+
+      {/* Section 4 — Filtros del vuelo */}
+      <div style={sectionStyle}>
+        <div style={sectionTitleStyle}>Filtros del vuelo</div>
+
         <div style={{ marginBottom: 12 }}>
-          <label style={labelStyle}>Filtros (JSON)</label>
-          <textarea
-            name="filtersJson"
-            value={form.filtersJson}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              name="requireCarryOn"
+              data-testid="filter-carryon"
+              checked={form.requireCarryOn}
+              onChange={handleChange}
+            />
+            Exigir que incluya equipaje de mano
+          </label>
+        </div>
+
+        <div style={rowStyle}>
+          <div>
+            <label style={labelStyle}>Max escalas no planificadas</label>
+            <input
+              name="maxUnplannedStops"
+              data-testid="filter-maxstops"
+              value={form.maxUnplannedStops}
+              onChange={handleChange}
+              type="number"
+              min="0"
+              max="3"
+              style={inputStyle}
+            />
+          </div>
+          <div>
+            <label style={labelStyle}>Max horas de viaje (0 = sin límite)</label>
+            <input
+              name="maxTotalTravelHours"
+              data-testid="filter-maxtravel"
+              value={form.maxTotalTravelHours}
+              onChange={handleChange}
+              type="number"
+              min="0"
+              style={inputStyle}
+            />
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={labelStyle}>Aerolíneas a bloquear (separadas por coma)</label>
+          <input
+            name="airlineBlacklist"
+            data-testid="filter-blacklist"
+            value={form.airlineBlacklist}
             onChange={handleChange}
-            rows={4}
-            style={{ ...inputStyle, fontFamily: 'monospace', resize: 'vertical' }}
+            placeholder="ej. JetSMART, Sky Airline"
+            style={inputStyle}
           />
         </div>
       </div>
