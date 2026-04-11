@@ -252,10 +252,27 @@ export default function AlertsPage() {
                         )}
                       </div>
                       <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
-                        Salida: {leg.departureTime ? new Date(leg.departureTime).toLocaleString('es-CL') : '—'}
-                        {leg.arrivalTime && (
-                          <> · Llegada: {new Date(leg.arrivalTime).toLocaleString('es-CL')}</>
-                        )}
+                        {(() => {
+                          // If the time encodes midnight UTC, the source had no real time —
+                          // show date only to avoid showing a fake "9 PM" coming from the
+                          // local-timezone conversion of 00:00 UTC.
+                          const fmt = (iso: string | undefined) => {
+                            if (!iso) return null;
+                            const d = new Date(iso);
+                            const isMidnightUtc = d.getUTCHours() === 0 && d.getUTCMinutes() === 0;
+                            return isMidnightUtc
+                              ? d.toLocaleDateString('es-CL', { timeZone: 'UTC' })
+                              : d.toLocaleString('es-CL', { timeZone: 'UTC' });
+                          };
+                          const dep = fmt(leg.departureTime);
+                          const arr = fmt(leg.arrivalTime);
+                          return (
+                            <>
+                              Salida: {dep ?? '—'}
+                              {arr && <> · Llegada: {arr}</>}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                     <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>

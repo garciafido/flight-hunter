@@ -58,7 +58,14 @@ export class GoogleFlightsSource implements FlightSource {
   private async scrapePage(
     page: import('playwright').Page,
     url: string,
-  ): Promise<Array<{ price: number; airline: string; stops: string }>> {
+  ): Promise<Array<{
+    price: number;
+    airline: string;
+    stops: string;
+    departureTime?: string;  // "8:40 AM"
+    arrivalTime?: string;    // "5:20 PM" (may be "5:20 PM+1" for next day)
+    nextDay?: boolean;       // true if arrival is next day
+  }>> {
     await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
 
     const proceed = page.getByText('Proceed anyway');
@@ -71,9 +78,21 @@ export class GoogleFlightsSource implements FlightSource {
 
     /* v8 ignore start */
     const flights = await page.evaluate(() => {
-      const items: Array<{ price: number; airline: string; stops: string }> = [];
+      const items: Array<{
+        price: number;
+        airline: string;
+        stops: string;
+        departureTime?: string;
+        arrivalTime?: string;
+        nextDay?: boolean;
+      }> = [];
       const body = document.body.innerText;
       const lines = body.split('\n').map((l) => l.trim()).filter(Boolean);
+
+      // Match Google Flights time-range patterns. The displayed format
+      // typically looks like: "8:40 AM – 5:20 PM" or "5:10 PM – 1:00 AM+1".
+      // We accept both en-dash (–), em-dash (—) and plain hyphen.
+      const TIME_RANGE = /^(\d{1,2}:\d{2}\s*[AP]M)\s*[–—-]\s*(\d{1,2}:\d{2}\s*[AP]M)(\+\d+)?$/;
 
       for (let i = 0; i < lines.length; i++) {
         const m = lines[i].match(/^\$(\d{1,3}(?:,\d{3})*)$/);
@@ -83,7 +102,24 @@ export class GoogleFlightsSource implements FlightSource {
 
         let airline = '';
         let stops = '';
-        for (let j = i - 1; j >= Math.max(0, i - 15); j--) {
+        let departureTime: string | undefined;
+        let arrivalTime: string | undefined;
+        let nextDay: boolean | undefined;
+
+        // Look forward (the time range usually appears AFTER the price line in the rendered
+        // listing) AND backward (some layouts put it before the airline name).
+        const lookahead = Math.min(lines.length - 1, i + 10);
+        const lookback = Math.max(0, i - 15);
+        for (let j = i + 1; j <= lookahead && !departureTime; j++) {
+          const tm = lines[j].match(TIME_RANGE);
+          if (tm) {
+            departureTime = tm[1].replace(/\s+/g, ' ').trim();
+            arrivalTime = tm[2].replace(/\s+/g, ' ').trim();
+            nextDay = !!tm[3];
+            break;
+          }
+        }
+        for (let j = i - 1; j >= lookback; j--) {
           const prev = lines[j];
           if (!airline && /LATAM|Aerol|Avianca|Copa|JetSMART|Sky|GOL|Azul|American|Delta|United/i.test(prev)) {
             airline = prev.split('Operated')[0].trim();
@@ -91,13 +127,21 @@ export class GoogleFlightsSource implements FlightSource {
           if (!stops && /^\d+ stop|^Nonstop$/i.test(prev)) {
             stops = prev;
           }
+          if (!departureTime) {
+            const tm = prev.match(TIME_RANGE);
+            if (tm) {
+              departureTime = tm[1].replace(/\s+/g, ' ').trim();
+              arrivalTime = tm[2].replace(/\s+/g, ' ').trim();
+              nextDay = !!tm[3];
+            }
+          }
         }
-        items.push({ price, airline, stops });
+        items.push({ price, airline, stops, departureTime, arrivalTime, nextDay });
       }
 
       const seen = new Set<string>();
       return items.filter((f) => {
-        const k = `${f.price}-${f.airline}`;
+        const k = `${f.price}-${f.airline}-${f.departureTime ?? ''}`;
         if (seen.has(k)) return false;
         seen.add(k);
         return true;
@@ -106,6 +150,37 @@ export class GoogleFlightsSource implements FlightSource {
     /* v8 ignore stop */
 
     return flights;
+  }
+
+  /**
+   * Convert a "8:40 AM" + base date into an ISO timestamp.
+   * Returns the base date at midnight UTC if the time string is missing or unparseable.
+   */
+  private timeStringToIso(baseDate: Date, timeStr: string | undefined, addDays = 0): string {
+    if (!timeStr) {
+      const d = new Date(baseDate);
+      d.setUTCHours(0, 0, 0, 0);
+      return d.toISOString();
+    }
+    const m = timeStr.match(/^(\d{1,2}):(\d{2})\s*([AP]M)$/i);
+    /* v8 ignore next 5 */
+    if (!m) {
+      const d = new Date(baseDate);
+      d.setUTCHours(0, 0, 0, 0);
+      return d.toISOString();
+    }
+    let hour = parseInt(m[1], 10);
+    const minute = parseInt(m[2], 10);
+    const ampm = m[3].toUpperCase();
+    if (ampm === 'PM' && hour !== 12) hour += 12;
+    if (ampm === 'AM' && hour === 12) hour = 0;
+    // We don't know the airline's timezone reliably, so we encode the wall clock time
+    // as if it were UTC. The dashboard will render it as-is to the user (in their TZ),
+    // which gives the right "looks like the schedule on Google Flights" experience.
+    const d = new Date(baseDate);
+    d.setUTCDate(d.getUTCDate() + addDays);
+    d.setUTCHours(hour, minute, 0, 0);
+    return d.toISOString();
   }
 
   buildOneWayUrl(origin: string, destination: string, depDate: Date): string {
@@ -160,21 +235,23 @@ export class GoogleFlightsSource implements FlightSource {
 
           for (const f of flights) {
             const stopCount = /nonstop/i.test(f.stops) ? 0 : parseInt(f.stops, 10) || 1;
+            const depIso = this.timeStringToIso(dep, f.departureTime, 0);
+            const arrIso = this.timeStringToIso(dep, f.arrivalTime, f.nextDay ? 1 : 0);
             // For a one-way leg the inbound is a stub pointing back so the type is satisfied
             allResults.push({
               searchId: config.id,
               source: 'google-flights' as const,
               outbound: {
-                departure: { airport: leg.origin, time: dep.toISOString() },
-                arrival: { airport: leg.destination, time: dep.toISOString() },
+                departure: { airport: leg.origin, time: depIso },
+                arrival: { airport: leg.destination, time: arrIso },
                 airline: f.airline || 'Unknown',
                 flightNumber: 'N/A',
                 durationMinutes: 0,
                 stops: stopCount,
               },
               inbound: {
-                departure: { airport: leg.destination, time: dep.toISOString() },
-                arrival: { airport: leg.origin, time: dep.toISOString() },
+                departure: { airport: leg.destination, time: arrIso },
+                arrival: { airport: leg.origin, time: arrIso },
                 airline: f.airline || 'Unknown',
                 flightNumber: 'N/A',
                 durationMinutes: 0,
@@ -236,20 +313,26 @@ export class GoogleFlightsSource implements FlightSource {
 
           for (const f of flights) {
             const stopCount = /nonstop/i.test(f.stops) ? 0 : parseInt(f.stops, 10) || 1;
+            const outDepIso = this.timeStringToIso(dep, f.departureTime, 0);
+            const outArrIso = this.timeStringToIso(dep, f.arrivalTime, f.nextDay ? 1 : 0);
+            // For the return leg we have no scraped times in roundtrip mode,
+            // so fall back to midnight on the return date.
+            const inDepIso = this.timeStringToIso(ret, undefined, 0);
+            const inArrIso = this.timeStringToIso(ret, undefined, 0);
             allResults.push({
               searchId: config.id,
               source: 'google-flights' as const,
               outbound: {
-                departure: { airport: config.origin, time: dep.toISOString() },
-                arrival: { airport: config.destination, time: dep.toISOString() },
+                departure: { airport: config.origin, time: outDepIso },
+                arrival: { airport: config.destination, time: outArrIso },
                 airline: f.airline || 'Unknown',
                 flightNumber: 'N/A',
                 durationMinutes: 0,
                 stops: stopCount,
               },
               inbound: {
-                departure: { airport: config.destination, time: ret.toISOString() },
-                arrival: { airport: config.origin, time: ret.toISOString() },
+                departure: { airport: config.destination, time: inDepIso },
+                arrival: { airport: config.origin, time: inArrIso },
                 airline: f.airline || 'Unknown',
                 flightNumber: 'N/A',
                 durationMinutes: 0,
