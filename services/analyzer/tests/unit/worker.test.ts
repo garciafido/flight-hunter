@@ -14,16 +14,16 @@ function makeRawJob(overrides: Partial<RawResultJob> = {}): RawResultJob {
     searchId: 'search-1',
     source: 'kiwi',
     outbound: {
-      departure: { airport: 'SCL', time: '10:00' },
-      arrival: { airport: 'MIA', time: '18:00' },
+      departure: { airport: 'BUE', time: '10:00' },
+      arrival: { airport: 'LIM', time: '14:00' },
       airline: 'LA',
       flightNumber: 'LA800',
-      durationMinutes: 480,
+      durationMinutes: 240,
       stops: 0,
     },
     inbound: {
-      departure: { airport: 'MIA', time: '09:00' },
-      arrival: { airport: 'SCL', time: '17:00' },
+      departure: { airport: 'CUZ', time: '09:00' },
+      arrival: { airport: 'BUE', time: '17:00' },
       airline: 'LA',
       flightNumber: 'LA801',
       durationMinutes: 480,
@@ -41,12 +41,17 @@ function makeRawJob(overrides: Partial<RawResultJob> = {}): RawResultJob {
   };
 }
 
+/** Canonical waypoint search fixture: BUE → LIM (stay) → CUZ (stay) → BUE */
 function makeSearchRecord(alertConfig = {}, filters = {}, stopover?: object) {
   return {
     id: 'search-1',
     name: 'Test Search',
-    origin: 'SCL',
-    destination: 'MIA',
+    origin: 'BUE',
+    waypoints: [
+      { airport: 'LIM', gap: { type: 'stay', minDays: 3, maxDays: 4 } },
+      { airport: 'CUZ', gap: { type: 'stay', minDays: 7, maxDays: 10 } },
+    ],
+    maxConnectionHours: 6,
     stopover: stopover ?? null,
     filters: {
       airlineBlacklist: [],
@@ -140,8 +145,7 @@ describe('AnalyzerWorker', () => {
     expect(deps.historyService.getPriceHistory).toHaveBeenCalledWith('search-1');
   });
 
-  it('detects alert when score is high enough', async () => {
-    // Set up so price=300 is well below max=1500 with high score thresholds
+  it('single-flight publish always uses null alertLevel (combo alert fires separately)', async () => {
     const deps = makeDeps(
       makeSearchRecord({
         scoreThresholds: { info: 10, good: 20, urgent: 30 },
@@ -151,8 +155,8 @@ describe('AnalyzerWorker', () => {
     const worker = new AnalyzerWorker(deps);
     await worker.process(makeRawJob({ totalPrice: 300, pricePer: 'person' }));
     const call = vi.mocked(deps.publisher.publish).mock.calls[0][0];
-    // With such low thresholds, score should trigger something
-    expect(call.alertLevel).not.toBeNull();
+    // Single-flight alerts are suppressed — waypoint combos fire alerts instead
+    expect(call.alertLevel).toBeNull();
   });
 
   it('includes score breakdown with flexibility hardcoded to 50', async () => {
@@ -206,25 +210,23 @@ describe('AnalyzerWorker', () => {
   });
 });
 
-describe('AnalyzerWorker N-leg combo evaluation', () => {
+describe('AnalyzerWorker waypoint sequence evaluation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  function makeSearchRecordSplit(legCount: number, maxCombos = 100) {
+  /** Search with BUE → LIM (stay 3-4d) → CUZ (stay 7-10d) → BUE */
+  function makeWaypointSearchRecord(maxCombos = 100) {
     return {
       id: 'search-1',
-      name: 'N-leg Split',
+      name: 'BUE-LIM-CUZ Waypoint',
       origin: 'BUE',
-      destination: 'CUZ',
-      mode: 'split',
+      waypoints: [
+        { airport: 'LIM', gap: { type: 'stay', minDays: 3, maxDays: 4 } },
+        { airport: 'CUZ', gap: { type: 'stay', minDays: 7, maxDays: 10 } },
+      ],
+      maxConnectionHours: 6,
       maxCombos,
-      legs: Array.from({ length: legCount }, (_, i) => ({
-        origin: 'BUE',
-        destination: 'CUZ',
-        departureFrom: new Date(`2026-0${i + 1}-01`),
-        departureTo: new Date(`2026-0${i + 1}-15`),
-      })),
       filters: {
         airlineBlacklist: [],
         airlinePreferred: [],
@@ -245,33 +247,59 @@ describe('AnalyzerWorker N-leg combo evaluation', () => {
     };
   }
 
-  function makeFlightResultRow(legIndex: number, price: number, deptTime: string) {
+  function makeFlightResultRow(
+    depAirport: string,
+    arrAirport: string,
+    price: number,
+    deptTime: string,
+    id: string,
+  ) {
     return {
-      id: `result-leg${legIndex}`,
+      id,
       searchId: 'search-1',
       source: 'google-flights',
-      outbound: { departure: { airport: 'BUE', time: deptTime }, arrival: { airport: 'CUZ', time: deptTime }, airline: 'LA', flightNumber: 'LA1', durationMinutes: 600, stops: 0 },
-      inbound: { departure: { airport: 'CUZ', time: deptTime }, arrival: { airport: 'BUE', time: deptTime }, airline: 'LA', flightNumber: 'LA2', durationMinutes: 600, stops: 0 },
+      outbound: {
+        departure: { airport: depAirport, time: deptTime },
+        arrival: { airport: arrAirport, time: deptTime },
+        airline: 'LA',
+        flightNumber: 'LA1',
+        durationMinutes: 180,
+        stops: 0,
+      },
+      inbound: {
+        departure: { airport: arrAirport, time: deptTime },
+        arrival: { airport: depAirport, time: deptTime },
+        airline: 'LA',
+        flightNumber: 'LA2',
+        durationMinutes: 180,
+        stops: 0,
+      },
       pricePerPerson: price,
       currency: 'USD',
       carryOnIncluded: true,
       bookingUrl: 'https://example.com',
       proxyRegion: 'AR',
-      legIndex,
       scrapedAt: new Date(),
     };
   }
 
-  it('evaluates combos for 3-leg split search using maxCombos from search record', async () => {
-    const searchRecord = makeSearchRecordSplit(3, 100);
+  it('evaluates combos for a 3-leg waypoint search (BUE→LIM→CUZ→BUE)', async () => {
+    const searchRecord = makeWaypointSearchRecord(100);
+
+    // Note: dates must satisfy gap constraints: LIM stay 3-4d, CUZ stay 7-10d
+    // BUE→LIM departs 2026-07-01, LIM→CUZ departs 2026-07-05 (4d gap ✓ 3-4d)
+    // LIM→CUZ departs 2026-07-05, CUZ→BUE departs 2026-07-12 (7d gap ✓ 7-10d)
+    const allRows = [
+      makeFlightResultRow('BUE', 'LIM', 200, '2026-07-01T10:00:00.000Z', 'r-bue-lim'),
+      makeFlightResultRow('LIM', 'CUZ', 150, '2026-07-05T10:00:00.000Z', 'r-lim-cuz'),
+      makeFlightResultRow('CUZ', 'BUE', 220, '2026-07-12T10:00:00.000Z', 'r-cuz-bue'),
+    ];
+
     const prisma = {
       search: { findUnique: vi.fn().mockResolvedValue(searchRecord) },
       flightResult: {
         create: vi.fn().mockResolvedValue({ id: 'result-1' }),
-        findMany: vi.fn()
-          .mockResolvedValueOnce([makeFlightResultRow(0, 200, '2026-07-01T10:00:00.000Z')])
-          .mockResolvedValueOnce([makeFlightResultRow(1, 150, '2026-08-01T10:00:00.000Z')])
-          .mockResolvedValueOnce([makeFlightResultRow(2, 220, '2026-09-01T10:00:00.000Z')]),
+        findMany: vi.fn().mockResolvedValue(allRows),
       },
       flightCombo: { create: vi.fn().mockResolvedValue({ id: 'combo-1' }) },
     } as unknown as PrismaClient;
@@ -283,22 +311,32 @@ describe('AnalyzerWorker N-leg combo evaluation', () => {
     const worker = new AnalyzerWorker(deps);
     await worker.process(makeRawJob({ searchId: 'search-1' }));
 
-    // Publisher should be called
+    // Publisher.publish is called for the single-flight result
     expect(deps.publisher.publish).toHaveBeenCalled();
+
+    // FlightCombo.create should be called once (one permutation, one valid combo)
+    expect(vi.mocked(prisma.flightCombo.create)).toHaveBeenCalledOnce();
+    const comboData = vi.mocked(prisma.flightCombo.create).mock.calls[0][0].data;
+    expect(comboData.searchId).toBe('search-1');
+    expect(comboData.totalPrice).toBe(200 + 150 + 220); // sum of leg prices
+    expect(comboData.currency).toBe('USD');
   });
 
   it('uses maxCombos=100 as default when not set', async () => {
-    const searchRecord = makeSearchRecordSplit(2);
-    // Remove maxCombos to test default
+    const searchRecord = makeWaypointSearchRecord();
     delete (searchRecord as any).maxCombos;
+
+    const allRows = [
+      makeFlightResultRow('BUE', 'LIM', 200, '2026-07-01T10:00:00.000Z', 'r-bue-lim'),
+      makeFlightResultRow('LIM', 'CUZ', 150, '2026-07-05T10:00:00.000Z', 'r-lim-cuz'),
+      makeFlightResultRow('CUZ', 'BUE', 220, '2026-07-12T10:00:00.000Z', 'r-cuz-bue'),
+    ];
 
     const prisma = {
       search: { findUnique: vi.fn().mockResolvedValue(searchRecord) },
       flightResult: {
         create: vi.fn().mockResolvedValue({ id: 'result-1' }),
-        findMany: vi.fn()
-          .mockResolvedValueOnce([makeFlightResultRow(0, 200, '2026-07-01T10:00:00.000Z')])
-          .mockResolvedValueOnce([makeFlightResultRow(1, 150, '2026-08-01T10:00:00.000Z')]),
+        findMany: vi.fn().mockResolvedValue(allRows),
       },
       flightCombo: { create: vi.fn().mockResolvedValue({ id: 'combo-1' }) },
     } as unknown as PrismaClient;
@@ -308,7 +346,121 @@ describe('AnalyzerWorker N-leg combo evaluation', () => {
     (deps.publisher as any).publish = vi.fn().mockResolvedValue(undefined);
 
     const worker = new AnalyzerWorker(deps);
-    // Should not throw
     await expect(worker.process(makeRawJob({ searchId: 'search-1' }))).resolves.not.toThrow();
+  });
+
+  it('skips combo evaluation when no flights match a leg pair', async () => {
+    const searchRecord = makeWaypointSearchRecord(100);
+
+    // Only BUE→LIM flights exist; LIM→CUZ and CUZ→BUE are missing
+    const allRows = [
+      makeFlightResultRow('BUE', 'LIM', 200, '2026-07-01T10:00:00.000Z', 'r-bue-lim'),
+    ];
+
+    const prisma = {
+      search: { findUnique: vi.fn().mockResolvedValue(searchRecord) },
+      flightResult: {
+        create: vi.fn().mockResolvedValue({ id: 'result-1' }),
+        findMany: vi.fn().mockResolvedValue(allRows),
+      },
+      flightCombo: { create: vi.fn().mockResolvedValue({ id: 'combo-1' }) },
+    } as unknown as PrismaClient;
+
+    const deps = makeDeps(searchRecord);
+    (deps as any).prisma = prisma;
+    (deps.publisher as any).publish = vi.fn().mockResolvedValue(undefined);
+
+    const worker = new AnalyzerWorker(deps);
+    await expect(worker.process(makeRawJob({ searchId: 'search-1' }))).resolves.not.toThrow();
+
+    // FlightCombo.create should NOT be called because legs are incomplete
+    expect(vi.mocked(prisma.flightCombo.create)).not.toHaveBeenCalled();
+  });
+
+  it('publishes combo alert when alertLevel qualifies', async () => {
+    const searchRecord = makeWaypointSearchRecord(100);
+    // Low thresholds so any non-zero score triggers an alert
+    searchRecord.alertConfig.scoreThresholds = { info: 1, good: 2, urgent: 3 };
+    searchRecord.alertConfig.maxPricePerPerson = 5000;
+
+    const allRows = [
+      makeFlightResultRow('BUE', 'LIM', 200, '2026-07-01T10:00:00.000Z', 'r-bue-lim'),
+      makeFlightResultRow('LIM', 'CUZ', 150, '2026-07-05T10:00:00.000Z', 'r-lim-cuz'),
+      makeFlightResultRow('CUZ', 'BUE', 220, '2026-07-12T10:00:00.000Z', 'r-cuz-bue'),
+    ];
+
+    const prisma = {
+      search: { findUnique: vi.fn().mockResolvedValue(searchRecord) },
+      flightResult: {
+        create: vi.fn().mockResolvedValue({ id: 'result-1' }),
+        findMany: vi.fn().mockResolvedValue(allRows),
+      },
+      flightCombo: { create: vi.fn().mockResolvedValue({ id: 'combo-1' }) },
+    } as unknown as PrismaClient;
+
+    const publishComboAlert = vi.fn().mockResolvedValue(undefined);
+    const deps = makeDeps(searchRecord);
+    (deps as any).prisma = prisma;
+    (deps.publisher as any).publish = vi.fn().mockResolvedValue(undefined);
+    (deps.publisher as any).publishComboAlert = publishComboAlert;
+
+    const worker = new AnalyzerWorker(deps);
+    await worker.process(makeRawJob({ searchId: 'search-1' }));
+
+    expect(publishComboAlert).toHaveBeenCalledOnce();
+    const opts = publishComboAlert.mock.calls[0][0];
+    expect(opts.searchId).toBe('search-1');
+    expect(opts.totalPricePerPerson).toBe(200 + 150 + 220);
+    // waypoints payload should have LIM and CUZ entries
+    expect(opts.waypoints).toHaveLength(2);
+    expect(opts.waypoints[0].airport).toBe('LIM');
+    expect(opts.waypoints[0].type).toBe('stay');
+    expect(opts.waypoints[1].airport).toBe('CUZ');
+    expect(opts.waypoints[1].type).toBe('stay');
+    // No plan field
+    expect(opts.plan).toBeUndefined();
+  });
+
+  it('does not call evaluateWaypointSequences when waypoints array is absent', async () => {
+    // Search with no waypoints field — should not attempt combo evaluation
+    const searchRecord = {
+      id: 'search-1',
+      name: 'Simple roundtrip',
+      origin: 'BUE',
+      // no waypoints
+      filters: {
+        airlineBlacklist: [],
+        airlinePreferred: [],
+        airportPreferred: {},
+        airportBlacklist: {},
+        maxUnplannedStops: 2,
+        requireCarryOn: false,
+        maxTotalTravelTime: 2880,
+      },
+      alertConfig: {
+        scoreThresholds: { info: 50, good: 70, urgent: 85 },
+        maxPricePerPerson: 1500,
+        currency: 'USD',
+      },
+      stopover: null,
+    };
+
+    const prisma = {
+      search: { findUnique: vi.fn().mockResolvedValue(searchRecord) },
+      flightResult: {
+        create: vi.fn().mockResolvedValue({ id: 'result-1' }),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      flightCombo: { create: vi.fn() },
+    } as unknown as PrismaClient;
+
+    const deps = makeDeps(searchRecord);
+    (deps as any).prisma = prisma;
+
+    const worker = new AnalyzerWorker(deps);
+    await expect(worker.process(makeRawJob())).resolves.not.toThrow();
+
+    // flightCombo.create should never be called
+    expect(vi.mocked(prisma.flightCombo.create)).not.toHaveBeenCalled();
   });
 });

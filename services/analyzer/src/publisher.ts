@@ -92,8 +92,8 @@ export class Publisher {
   }
 
   /**
-   * Publish a combo alert (split-mode N legs). The total price represents
-   * the sum of all leg prices per person and is what the user actually pays.
+   * Publish a combo alert for a waypoint-based N-leg trip.
+   * The total price represents the sum of all leg prices per person.
    */
   async publishComboAlert(opts: {
     searchId: string;
@@ -103,9 +103,15 @@ export class Publisher {
     score: number;
     scoreBreakdown: ScoreBreakdown;
     alertLevel: AlertLevel;
-    plan?: { position: 'start' | 'end' | 'any'; airport: string; days: number };
+    waypoints?: Array<{
+      airport: string;
+      type: 'stay' | 'connection';
+      minDays?: number;
+      maxDays?: number;
+      maxHours?: number;
+    }>;
   }): Promise<void> {
-    const { searchId, flightResultId, legs, totalPricePerPerson, score, scoreBreakdown, alertLevel, plan } = opts;
+    const { searchId, flightResultId, legs, totalPricePerPerson, score, scoreBreakdown, alertLevel, waypoints } = opts;
     const firstLeg = legs[0];
     const lastLeg = legs[legs.length - 1];
 
@@ -138,7 +144,7 @@ export class Publisher {
           durationMinutes: l.outbound.durationMinutes,
         })),
         totalPrice: totalPricePerPerson,
-        ...(plan ? { plan } : {}),
+        ...(waypoints ? { waypoints } : {}),
       },
     };
 

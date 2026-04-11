@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { RawResultJob, SearchConfig, FlightResult } from '@flight-hunter/shared';
-import { normalizePricePerPerson } from '@flight-hunter/shared';
+import { normalizePricePerPerson, enumerateLegSequences, type Waypoint, type LegSequence } from '@flight-hunter/shared';
 import { ScoringEngine } from './scoring/engine.js';
 import { computePriceScore } from './scoring/price-score.js';
 import { computeScheduleScore } from './scoring/schedule-score.js';
@@ -102,22 +102,10 @@ export class AnalyzerWorker {
       { name: 'flexibility', score: flexibilityScore },
     ]);
 
-    // Detect deal at the leg/result level.
-    // For SPLIT mode, individual legs MUST NOT trigger alerts because
-    // the user's price thresholds refer to the TOTAL trip cost.
-    // EXCEPTION: planIndex >= 99 means this is a "direct fallback" result
-    // from an OPTIONAL stopover plan — those represent a complete trip
-    // already, so they should fire alerts at the result level.
-    const isSplitMode = (search as any).mode === 'split';
-    const isDirectFallback = (data.planIndex ?? 0) >= 99;
-    const alertLevel = (isSplitMode && !isDirectFallback)
-      ? null
-      : this.deps.dealDetector.detect(
-          scoreResult.total,
-          pricePerPerson,
-          alertConfig,
-          history ?? undefined,
-        );
+    // Single-flight alerts are suppressed — every search is multi-leg (waypoints).
+    // The combo alert fires only after evaluateWaypointSequences, which uses the
+    // total trip price against the user's thresholds.
+    const alertLevel = null;
 
     // Outlier detection
     const outlier = await this.deps.outlierDetector.check(
@@ -127,7 +115,7 @@ export class AnalyzerWorker {
       history?.avg48h ?? null,
     );
 
-    // Publish
+    // Publish (persist to DB; no single-flight alert)
     await this.deps.publisher.publish({
       flight,
       pricePerPerson,
@@ -138,111 +126,114 @@ export class AnalyzerWorker {
       suspicionReason: outlier.suspicionReason,
     });
 
-    // For split-mode searches, evaluate combos after saving each leg result
-    const searchMode = (search as any).mode ?? 'roundtrip';
-    const stopoverPlan = (search as any).stopoverPlan;
-    const searchLegs = (search as any).legs;
-
-    if (searchMode === 'split' && stopoverPlan) {
-      // stopoverPlan mode: always 3 legs per plan
-      const plan = stopoverPlan as { position: string; airport: string; minDays: number; maxDays: number };
-      const planIndices = plan.position === 'any' ? [0, 1] : [0];
-      for (const planIndex of planIndices) {
-        try {
-          await this.evaluateCombos(data.searchId, 3, searchConfig, search as any, planIndex, plan);
-        } catch (err) {
-          console.error(`evaluateCombos(planIndex=${planIndex}) failed:`, err instanceof Error ? err.message : err);
-        }
-      }
-    } else if (searchMode === 'split' && Array.isArray(searchLegs) && searchLegs.length > 0) {
+    // Evaluate combos for waypoint-based searches
+    const waypoints = (search as any).waypoints as Waypoint[] | undefined;
+    if (Array.isArray(waypoints) && waypoints.length > 0) {
       try {
-        await this.evaluateCombos(data.searchId, searchLegs.length, searchConfig, search as any, 0, null);
+        await this.evaluateWaypointSequences(data.searchId, searchConfig, search as any);
       } catch (err) {
-        console.error('evaluateCombos failed:', err instanceof Error ? err.message : err);
+        console.error('evaluateWaypointSequences failed:', err instanceof Error ? err.message : err);
       }
     }
   }
 
-  private async evaluateCombos(
+  private async evaluateWaypointSequences(
     searchId: string,
-    legCount: number,
     searchConfig: SearchConfig,
     searchRecord: any,
-    planIndex: number,
-    stopoverPlan: { position: string; airport: string; minDays: number; maxDays: number } | null,
   ): Promise<void> {
-    const maxCombos: number = (searchRecord as any).maxCombos ?? 100;
-    const TOP_N = topNPerLeg(maxCombos, legCount);
+    const waypoints = searchRecord.waypoints as Waypoint[];
+    const origin = searchConfig.origin;
+    const sequences = enumerateLegSequences(origin, waypoints);
+    const maxCombos: number = searchRecord.maxCombos ?? 100;
+    const TOP_N = topNPerLeg(maxCombos, waypoints.length + 1);
 
-    // Fetch top N cheapest results per leg (filtered by planIndex when using stopoverPlan)
-    const legResultArrays: FlightResult[][] = [];
-    for (let i = 0; i < legCount; i++) {
-      const whereClause: any = { searchId, legIndex: i };
-      if (stopoverPlan) {
-        whereClause.planIndex = planIndex;
+    for (const sequence of sequences) {
+      try {
+        await this.evaluateOneSequence(searchId, searchConfig, sequence, waypoints, TOP_N);
+      } catch (err) {
+        console.error('evaluateOneSequence failed:', err instanceof Error ? err.message : err);
       }
+    }
+  }
+
+  private async evaluateOneSequence(
+    searchId: string,
+    searchConfig: SearchConfig,
+    sequence: LegSequence,
+    waypoints: Waypoint[],
+    topN: number,
+  ): Promise<void> {
+    // Fetch flights for each leg pair — filter in memory by airport pair.
+    // Fetching all flights per search and filtering is fine for personal-use scale.
+    const legResultArrays: (FlightResult & { id: string })[][] = [];
+    for (const legPair of sequence.legs) {
       const rows = await this.deps.prisma.flightResult.findMany({
-        where: whereClause,
+        where: { searchId },
         orderBy: { pricePerPerson: 'asc' },
-        take: TOP_N,
       });
-
-      const results: (FlightResult & { id: string })[] = rows.map((row: any) => ({
-        id: row.id,
-        searchId: row.searchId,
-        source: row.source as FlightResult['source'],
-        outbound: row.outbound as FlightResult['outbound'],
-        inbound: row.inbound as FlightResult['inbound'],
-        stopover: row.stopoverInfo as FlightResult['stopover'] | undefined,
-        totalPrice: Number(row.pricePerPerson),
-        currency: row.currency,
-        pricePer: 'person' as const,
-        passengers: 1,
-        carryOnIncluded: row.carryOnIncluded,
-        bookingUrl: row.bookingUrl,
-        scrapedAt: row.scrapedAt,
-        proxyRegion: row.proxyRegion as FlightResult['proxyRegion'],
-        legIndex: row.legIndex,
-      }));
-
-      legResultArrays.push(results);
+      const matching = rows
+        .filter((r: any) => {
+          const dep = r.outbound?.departure?.airport;
+          const arr = r.outbound?.arrival?.airport;
+          return dep === legPair.origin && arr === legPair.destination;
+        })
+        .slice(0, topN)
+        .map((row: any) => ({
+          id: row.id,
+          searchId: row.searchId,
+          source: row.source,
+          outbound: row.outbound,
+          inbound: row.inbound,
+          stopover: row.stopoverInfo ?? undefined,
+          totalPrice: Number(row.pricePerPerson),
+          currency: row.currency,
+          pricePer: 'person' as const,
+          passengers: 1,
+          carryOnIncluded: row.carryOnIncluded,
+          bookingUrl: row.bookingUrl,
+          scrapedAt: row.scrapedAt,
+          proxyRegion: row.proxyRegion,
+        }));
+      legResultArrays.push(matching);
     }
 
-    // Need results for all legs to build combos
+    // All legs must have at least one result to form a combo
     if (legResultArrays.some((arr) => arr.length === 0)) return;
 
-    // Build per-gap constraints when running under a stopoverPlan.
-    // For 3-leg plans the gap rules are:
-    //   position='start': leg0→leg1 must equal stopover (3-4 days in LIM),
-    //                     leg1→leg2 must be at least MIN_VACATION_DAYS in destination
-    //   position='end':   leg0→leg1 must be at least MIN_VACATION_DAYS in destination,
-    //                     leg1→leg2 must equal stopover (3-4 days in LIM)
-    const MIN_VACATION_DAYS = 5;
-    const MAX_VACATION_DAYS = 60;
-    let gapConstraints: Array<{ minDays: number; maxDays: number } | null> | undefined;
-    if (stopoverPlan && legCount === 3) {
-      const stop = { minDays: stopoverPlan.minDays, maxDays: stopoverPlan.maxDays };
-      const vacation = { minDays: MIN_VACATION_DAYS, maxDays: MAX_VACATION_DAYS };
-      // planIndex 0 == 'start' position, planIndex 1 == 'end' position when 'any'
-      const isStartPlan =
-        stopoverPlan.position === 'start' ||
-        (stopoverPlan.position === 'any' && planIndex === 0);
-      gapConstraints = isStartPlan
-        ? [stop, vacation]      // start: stopover first, then vacation
-        : [vacation, stop];     // end:   vacation first, then stopover
-    }
-
-    const combos = buildCombos(legResultArrays, { topN: TOP_N, gapConstraints });
+    const combos = buildCombos(legResultArrays, {
+      topN,
+      gapConstraints: sequence.gapConstraints,
+    });
     if (combos.length === 0) return;
 
-    // Score each combo and pick the best one
     const scoredCombos = combos.map((combo) => ({
       combo,
       ...scoreCombo(combo, searchConfig),
     }));
-
     scoredCombos.sort((a, b) => b.score - a.score);
     const best = scoredCombos[0];
+
+    // Build waypoint payload reflecting the actual flown order.
+    // sequence.legs has length waypoints.length + 1; the destination of leg i (i < length-1)
+    // is the i-th waypoint in the flown order.
+    const waypointPayload = sequence.legs.slice(0, -1).map((leg) => {
+      const wp = waypoints.find((w) => w.airport === leg.destination);
+      if (!wp) throw new Error(`No waypoint config for ${leg.destination}`);
+      if (wp.gap.type === 'stay') {
+        return {
+          airport: wp.airport,
+          type: 'stay' as const,
+          minDays: wp.gap.minDays,
+          maxDays: wp.gap.maxDays,
+        };
+      }
+      return {
+        airport: wp.airport,
+        type: 'connection' as const,
+        maxHours: wp.gap.maxHours,
+      };
+    });
 
     const totalPrice = best.combo.reduce((sum, r) => sum + r.totalPrice, 0);
     const currency = best.combo[0].currency;
@@ -256,10 +247,8 @@ export class AnalyzerWorker {
       undefined,
     );
 
-    // Save the best combo to the FlightCombo table
-    let savedComboId: string | undefined;
     try {
-      const created = await (this.deps.prisma as any).flightCombo.create({
+      await (this.deps.prisma as any).flightCombo.create({
         data: {
           searchId,
           flightResultIds,
@@ -270,27 +259,12 @@ export class AnalyzerWorker {
           alertLevel: alertLevel ?? undefined,
         },
       });
-      savedComboId = created?.id as string | undefined;
     } catch (err) {
-      // Non-fatal — combo saving should not break the main flow
       console.error('Failed to save FlightCombo:', err instanceof Error ? err.message : err);
     }
 
-    // Publish the combo as an alert if it qualifies (split-mode only path).
-    // The total price here represents the FULL trip cost per person,
-    // which is what the user's thresholds actually refer to.
-    // The Alert.flightResultId FK points at flight_results (not flight_combos),
-    // so we use the first leg's id for that field; the AlertJob.combo payload
-    // carries the full leg list for display.
     const firstLegId = (best.combo[0] as any).id as string | undefined;
     if (alertLevel && firstLegId) {
-      const planPayload = stopoverPlan
-        ? {
-            position: stopoverPlan.position as 'start' | 'end' | 'any',
-            airport: stopoverPlan.airport,
-            days: stopoverPlan.minDays,
-          }
-        : undefined;
       try {
         await this.deps.publisher.publishComboAlert({
           searchId,
@@ -300,7 +274,7 @@ export class AnalyzerWorker {
           score: best.score,
           scoreBreakdown: best.breakdown,
           alertLevel,
-          plan: planPayload,
+          waypoints: waypointPayload,
         });
       } catch (err) {
         console.error('Failed to publish combo alert:', err instanceof Error ? err.message : err);
