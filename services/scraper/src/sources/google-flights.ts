@@ -1,4 +1,5 @@
 import type { FlightResult, SearchConfig, ProxyRegion } from '@flight-hunter/shared';
+import { getRuntimeConfig } from '@flight-hunter/shared';
 import type { FlightSource } from './base-source.js';
 
 type LegInput = { origin: string; destination: string; departureFrom: Date; departureTo: Date };
@@ -222,13 +223,15 @@ export class GoogleFlightsSource implements FlightSource {
   }
 
   /**
-   * Generates departure dates for a leg, capped at 8 to avoid abuse.
+   * Generates departure dates for a leg, capped at scraperMaxDatesPerPair
+   * (runtime-configurable; default 8) to avoid abuse.
    */
   private buildLegDates(leg: LegInput): Date[] {
     const dates: Date[] = [];
     const cursor = new Date(leg.departureFrom);
     const depTo = new Date(leg.departureTo);
-    while (cursor.getTime() <= depTo.getTime() && dates.length < 8) {
+    const maxDates = getRuntimeConfig().scraperMaxDatesPerPair;
+    while (cursor.getTime() <= depTo.getTime() && dates.length < maxDates) {
       dates.push(new Date(cursor));
       cursor.setDate(cursor.getDate() + 1);
     }

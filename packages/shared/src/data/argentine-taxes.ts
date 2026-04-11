@@ -14,16 +14,33 @@
  *   - as a non-resident tourist
  *   - in ARS via local pricing
  *
- * Update if the rates change.
+ * The runtime-config loader can override these via setArgentineTaxRates().
  */
-export const AR_TAX_PAIS = 0.30;
-export const AR_TAX_RG5232 = 0.45;
-export const AR_TAX_MULTIPLIER = 1 + AR_TAX_PAIS + AR_TAX_RG5232; // 1.75
+export const DEFAULT_AR_TAX_PAIS = 0.30;
+export const DEFAULT_AR_TAX_RG5232 = 0.45;
+
+let AR_TAX_PAIS = DEFAULT_AR_TAX_PAIS;
+let AR_TAX_RG5232 = DEFAULT_AR_TAX_RG5232;
+
+/** Total multiplier (1 + sum of rates). Recomputed on every read. */
+export function getArgentineTaxMultiplier(): number {
+  return 1 + AR_TAX_PAIS + AR_TAX_RG5232;
+}
+
+/** Replace the active tax rates (called by the runtime config loader). */
+export function setArgentineTaxRates(pais: number, rg5232: number): void {
+  AR_TAX_PAIS = pais;
+  AR_TAX_RG5232 = rg5232;
+}
+
+export function getArgentineTaxRates(): { pais: number; rg5232: number } {
+  return { pais: AR_TAX_PAIS, rg5232: AR_TAX_RG5232 };
+}
 
 /**
  * Returns the estimated total in USD for a foreign-currency purchase paid
  * from Argentina with an AR card. Rounded to the nearest whole USD.
  */
 export function estimateArgentineTotalUSD(googleUSD: number): number {
-  return Math.round(googleUSD * AR_TAX_MULTIPLIER);
+  return Math.round(googleUSD * getArgentineTaxMultiplier());
 }

@@ -23,9 +23,12 @@ export function formatTelegram(alert: AlertJob, searchName: string): string {
       text += `*Itinerario:* ${summary}\n`;
     }
     text += `💰 *${currency} ${combo.totalPrice} total (combinación)*\n`;
-    if (combo.carryOnEstimateUSD !== undefined && combo.carryOnEstimateUSD > 0) {
-      const withCarryOn = Number(combo.totalPrice) + combo.carryOnEstimateUSD;
-      text += `🧳 +USD ${combo.carryOnEstimateUSD} carry-on (estimado) → *USD ${withCarryOn}*\n`;
+    const carryOn = combo.carryOnEstimateUSD ?? 0;
+    const checkedBag = combo.checkedBagEstimateUSD ?? 0;
+    if (carryOn > 0) text += `🧳 +USD ${carryOn} carry-on (estimado)\n`;
+    if (checkedBag > 0) text += `🧳 +USD ${checkedBag} valija despachada (estimado)\n`;
+    if (carryOn + checkedBag > 0) {
+      text += `💵 *Total con equipaje: USD ${Number(combo.totalPrice) + carryOn + checkedBag}*\n`;
     }
     if (combo.argTaxEstimateUSD !== undefined) {
       text += `🇦🇷 con impuestos AR (PAIS+RG5232): *USD ${combo.argTaxEstimateUSD}*\n`;

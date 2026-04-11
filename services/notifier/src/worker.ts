@@ -30,8 +30,9 @@ export interface NotifierDeps {
   throttle: Throttle;
   prisma: PrismaClient;
   /** Window (ms) within which a (searchId, flightResultId, level) tuple is
-   * considered already alerted. Default 6 hours. */
-  dedupTtlMs?: number;
+   * considered already alerted. Default 6 hours. May be a getter for
+   * runtime-configurable values. */
+  dedupTtlMs?: number | (() => number);
   /** Optional override for webhook channel (for testing). If not provided, created dynamically from settings. */
   webhook?: WebhookChannel | null;
   /** Optional override for slack channel (for testing). If not provided, created dynamically from settings. */
@@ -65,7 +66,9 @@ export class NotifierWorker {
     // alerts table did not clear the Set, so the same combo would be silently
     // suppressed forever. Querying the DB keeps the dedup state in sync with
     // whatever is actually persisted.
-    const dedupTtlMs = this.deps.dedupTtlMs ?? 6 * 60 * 60 * 1000;
+    const dedupTtlMs = typeof this.deps.dedupTtlMs === 'function'
+      ? this.deps.dedupTtlMs()
+      : this.deps.dedupTtlMs ?? 6 * 60 * 60 * 1000;
     const dedupCutoff = new Date(Date.now() - dedupTtlMs);
     const recent = await this.deps.prisma.alert.findFirst({
       where: {

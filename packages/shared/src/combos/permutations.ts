@@ -1,4 +1,5 @@
 import type { Waypoint } from '../types/search.js';
+import { getRuntimeConfig } from '../data/runtime-config.js';
 
 export interface LegPair {
   origin: string;
@@ -15,8 +16,6 @@ export interface LegSequence {
   legs: LegPair[];                  // length = waypoints.length + 1
   gapConstraints: GapConstraint[];  // length = waypoints.length
 }
-
-const MAX_WAYPOINTS = 6;
 
 function permute<T>(arr: T[]): T[][] {
   if (arr.length <= 1) return [arr];
@@ -48,8 +47,9 @@ export function enumerateLegSequences(
   if (waypoints.length === 0) {
     throw new Error('enumerateLegSequences: at least one waypoint is required');
   }
-  if (waypoints.length > MAX_WAYPOINTS) {
-    throw new Error(`enumerateLegSequences: too many waypoints (${waypoints.length} > ${MAX_WAYPOINTS})`);
+  const maxWaypoints = getRuntimeConfig().maxWaypoints;
+  if (waypoints.length > maxWaypoints) {
+    throw new Error(`enumerateLegSequences: too many waypoints (${waypoints.length} > ${maxWaypoints})`);
   }
 
   const firstPinned = waypoints.filter((w) => w.pin === 'first');

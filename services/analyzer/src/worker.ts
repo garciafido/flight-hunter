@@ -150,7 +150,7 @@ export class AnalyzerWorker {
 
     for (const sequence of sequences) {
       try {
-        await this.evaluateOneSequence(searchId, searchConfig, sequence, waypoints, TOP_N);
+        await this.evaluateOneSequence(searchId, searchConfig, searchRecord, sequence, waypoints, TOP_N);
       } catch (err) {
         console.error('evaluateOneSequence failed:', err instanceof Error ? err.message : err);
       }
@@ -160,6 +160,7 @@ export class AnalyzerWorker {
   private async evaluateOneSequence(
     searchId: string,
     searchConfig: SearchConfig,
+    searchRecord: any,
     sequence: LegSequence,
     waypoints: Waypoint[],
     topN: number,
@@ -276,6 +277,8 @@ export class AnalyzerWorker {
           alertLevel,
           waypoints: waypointPayload,
           requireCarryOn: searchConfig.filters.requireCarryOn,
+          outboundCheckedBags: (searchRecord as any).outboundCheckedBags ?? 0,
+          returnCheckedBags: (searchRecord as any).returnCheckedBags ?? 0,
         });
       } catch (err) {
         console.error('Failed to publish combo alert:', err instanceof Error ? err.message : err);

@@ -22,6 +22,8 @@ model Search {
   active            Boolean   @default(true)
   waypoints           Json
   maxConnectionHours  Int      @default(6) @map("max_connection_hours")
+  outboundCheckedBags Int      @default(0) @map("outbound_checked_bags")
+  returnCheckedBags   Int      @default(0) @map("return_checked_bags")
   destinationMode       String   @default("single") @map("destination_mode")
   destinationCandidates Json?    @map("destination_candidates")
   windowMode            Boolean  @default(false) @map("window_mode")
@@ -201,6 +203,10 @@ model SystemSettings {
   webhookEnabled    Boolean  @default(false) @map("webhook_enabled")
   slackWebhookUrl   String?  @map("slack_webhook_url")
   discordWebhookUrl String?  @map("discord_webhook_url")
+  // Runtime overrides for tunables: baggage policies, AR taxes, notifier
+  // dedup/cooldown, scraper date cap, max waypoints. Anything not present
+  // here falls back to the hardcoded defaults in shared/data/.
+  runtimeConfig     Json?    @map("runtime_config")
   updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("system_settings")

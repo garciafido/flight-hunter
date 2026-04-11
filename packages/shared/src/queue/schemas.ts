@@ -77,8 +77,10 @@ export const AlertJobSchema = z.object({
     legs: z.array(FlightSummarySchema.extend({
       // Optional flight duration in minutes (only set when the source had real times).
       durationMinutes: z.number().optional(),
-      // Worst-case carry-on cost estimate (USD), only when requireCarryOn=true.
+      // Worst-case carry-on cost estimate (USD per pax), only when requireCarryOn=true.
       carryOnEstimateUSD: z.number().optional(),
+      // Checked-bag cost estimate (USD per pax) for the bags configured on this leg.
+      checkedBagEstimateUSD: z.number().optional(),
     })),
     totalPrice: z.number(),
     waypoints: z.array(z.object({
@@ -88,9 +90,11 @@ export const AlertJobSchema = z.object({
       maxDays: z.number().optional(),
       maxHours: z.number().optional(),
     })).optional(),
-    // Sum of carry-on estimates across all legs (USD), only when requireCarryOn=true.
+    // Sum of carry-on estimates across all legs (USD per pax), only when requireCarryOn=true.
     carryOnEstimateUSD: z.number().optional(),
-    // Estimated AR-resident total: totalPrice * AR_TAX_MULTIPLIER (1.75).
+    // Sum of checked-bag estimates across all legs (USD per pax), only when bags > 0.
+    checkedBagEstimateUSD: z.number().optional(),
+    // Estimated AR-resident total: (totalPrice + carryOn + checkedBag) * AR_TAX_MULTIPLIER.
     // Always populated; UI decides whether/how to show it.
     argTaxEstimateUSD: z.number().optional(),
   }).optional(),

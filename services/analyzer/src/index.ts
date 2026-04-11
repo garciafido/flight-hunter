@@ -3,7 +3,7 @@ import { Worker, Queue } from 'bullmq';
 import { PrismaClient } from '@flight-hunter/shared/db';
 import { createLogger } from '@flight-hunter/shared/logger';
 import { Redis } from 'ioredis';
-import { QUEUE_NAMES, RawResultJobSchema } from '@flight-hunter/shared';
+import { QUEUE_NAMES, RawResultJobSchema, startRuntimeConfigPoller } from '@flight-hunter/shared';
 import type { RawResultJob } from '@flight-hunter/shared';
 import { AnalyzerWorker } from './worker.js';
 import { FilterEngine } from './filters/filter-engine.js';
@@ -23,6 +23,13 @@ const redis = new Redis({
 
 const prisma = new PrismaClient({
   datasourceUrl: process.env.DATABASE_URL,
+});
+
+// Refresh baggage policies, AR taxes, and other tunables from system_settings
+// every 30s. Helpers like estimateCarryOnUSD() will reflect changes live.
+startRuntimeConfigPoller(prisma, {
+  intervalMs: 30_000,
+  onError: (err) => logger.error({ err }, 'Failed to refresh runtime config'),
 });
 
 const alertQueue = new Queue(QUEUE_NAMES.ALERTS, { connection: redis });

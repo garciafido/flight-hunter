@@ -92,7 +92,7 @@ export default function AlertsPage() {
   }
 
   function buildShareText(alert: any, searchName: string): string {
-    const combo = alert.comboInfo as { legs?: any[]; totalPrice?: number; waypoints?: any[]; carryOnEstimateUSD?: number; argTaxEstimateUSD?: number } | null;
+    const combo = alert.comboInfo as { legs?: any[]; totalPrice?: number; waypoints?: any[]; carryOnEstimateUSD?: number; checkedBagEstimateUSD?: number; argTaxEstimateUSD?: number } | null;
     const isCombo = !!(combo && Array.isArray(combo.legs) && combo.legs.length > 0);
     const levelEmoji = alert.level === 'urgent' ? '🚨' : alert.level === 'good' ? '✅' : 'ℹ️';
 
@@ -100,7 +100,9 @@ export default function AlertsPage() {
       const currency = combo!.legs![0]?.currency ?? 'USD';
       const totalPrice = combo!.totalPrice;
       const carryOn = combo!.carryOnEstimateUSD;
+      const checkedBag = combo!.checkedBagEstimateUSD;
       const argTotal = combo!.argTaxEstimateUSD;
+      const totalWithExtras = Number(totalPrice ?? 0) + (carryOn ?? 0) + (checkedBag ?? 0);
       const lines: string[] = [];
       lines.push(`${levelEmoji} *${searchName}*`);
       if (combo!.waypoints && combo!.waypoints.length > 0) {
@@ -113,7 +115,13 @@ export default function AlertsPage() {
       }
       lines.push(`💰 *${currency} ${totalPrice} / persona* (${combo!.legs!.length} tramos)`);
       if (carryOn !== undefined && carryOn > 0) {
-        lines.push(`🧳 +USD ${carryOn} carry-on (estimado) → *USD ${(Number(totalPrice) + carryOn).toLocaleString()}*`);
+        lines.push(`🧳 +USD ${carryOn} carry-on (estimado)`);
+      }
+      if (checkedBag !== undefined && checkedBag > 0) {
+        lines.push(`🧳 +USD ${checkedBag} valija despachada (estimado)`);
+      }
+      if ((carryOn ?? 0) + (checkedBag ?? 0) > 0) {
+        lines.push(`💵 *Total con equipaje: USD ${totalWithExtras.toLocaleString()} / persona*`);
       }
       if (argTotal !== undefined) {
         lines.push(`🇦🇷 con impuestos AR (PAIS+RG5232): *USD ${argTotal.toLocaleString()}*`);
@@ -304,7 +312,7 @@ export default function AlertsPage() {
 
       {alerts.map((a: any) => {
         const fb = feedbackState[a.id];
-        const combo = a.comboInfo as { legs?: any[]; totalPrice?: number; waypoints?: any[]; carryOnEstimateUSD?: number; argTaxEstimateUSD?: number } | null;
+        const combo = a.comboInfo as { legs?: any[]; totalPrice?: number; waypoints?: any[]; carryOnEstimateUSD?: number; checkedBagEstimateUSD?: number; argTaxEstimateUSD?: number } | null;
         const isCombo = !!(combo && Array.isArray(combo.legs) && combo.legs.length > 0);
         const displayPrice = isCombo
           ? combo!.totalPrice
@@ -313,8 +321,9 @@ export default function AlertsPage() {
           ? combo!.legs![0]?.currency ?? a.flightResult?.currency
           : a.flightResult?.currency;
         const carryOn = combo?.carryOnEstimateUSD;
+        const checkedBag = combo?.checkedBagEstimateUSD;
         const argTotal = combo?.argTaxEstimateUSD;
-        const totalWithCarryOn = (Number(displayPrice ?? 0)) + (carryOn ?? 0);
+        const totalWithExtras = (Number(displayPrice ?? 0)) + (carryOn ?? 0) + (checkedBag ?? 0);
         return (
           <div key={a.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, marginBottom: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -334,15 +343,17 @@ export default function AlertsPage() {
                       </span>
                     )}
                   </div>
-                  {isCombo && (carryOn !== undefined || argTotal !== undefined) && (
+                  {isCombo && (carryOn !== undefined || checkedBag !== undefined || argTotal !== undefined) && (
                     <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
-                      {carryOn !== undefined && carryOn > 0 && (
+                      {(carryOn !== undefined && carryOn > 0) || (checkedBag !== undefined && checkedBag > 0) ? (
                         <span style={{ marginRight: 10 }}>
-                          🧳 +USD {carryOn} carry-on (estimado) → <strong>USD {totalWithCarryOn.toLocaleString()}</strong>
+                          {carryOn !== undefined && carryOn > 0 && <>🧳 +USD {carryOn} carry-on </>}
+                          {checkedBag !== undefined && checkedBag > 0 && <>🧳 +USD {checkedBag} valija </>}
+                          (estimado) → <strong>USD {totalWithExtras.toLocaleString()}</strong>
                         </span>
-                      )}
+                      ) : null}
                       {argTotal !== undefined && (
-                        <span title="Estimación con Impuesto PAIS 30% + Percepción RG 5232 45% (residente AR pagando con tarjeta argentina)">
+                        <span title="Estimación con Impuesto PAIS 30% + Percepción RG 5232 45% (residente AR pagando con tarjeta argentina, incluyendo equipaje)">
                           🇦🇷 con impuestos AR: <strong>USD {argTotal.toLocaleString()}</strong>
                         </span>
                       )}

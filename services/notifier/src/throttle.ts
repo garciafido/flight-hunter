@@ -1,14 +1,16 @@
 import type { AlertLevel, NotificationChannel } from '@flight-hunter/shared';
 
+/**
+ * Throttle options. Both timing values are functions so the runtime config
+ * loader can change them on the fly without reconstructing the throttle.
+ */
 export interface ThrottleOptions {
-  cooldownMs: number;
+  cooldownMs: number | (() => number);
   /**
    * How long a previously-seen flight fingerprint stays "deduped".
    * After this many milliseconds the same fingerprint can fire a new alert.
-   * Defaults to 6 hours to avoid spamming the same combo on every scan
-   * while still re-alerting after a meaningful gap.
    */
-  flightDedupTtlMs?: number;
+  flightDedupTtlMs?: number | (() => number);
 }
 
 export interface Throttle {
@@ -18,10 +20,17 @@ export interface Throttle {
   isFlightDuplicate(fingerprint: string): boolean;
 }
 
+function asGetter(value: number | (() => number) | undefined, fallback: number): () => number {
+  if (typeof value === 'function') return value;
+  if (typeof value === 'number') return () => value;
+  return () => fallback;
+}
+
 export function createThrottle(options: ThrottleOptions): Throttle {
   const lastSent = new Map<string, number>();
   const seenFlights = new Map<string, number>(); // fingerprint -> recordedAt
-  const flightDedupTtlMs = options.flightDedupTtlMs ?? 6 * 60 * 60 * 1000;
+  const getCooldownMs = asGetter(options.cooldownMs, 2 * 60 * 60 * 1000);
+  const getFlightDedupTtlMs = asGetter(options.flightDedupTtlMs, 6 * 60 * 60 * 1000);
 
   function makeKey(searchId: string, channel: NotificationChannel): string {
     return `${searchId}:${channel}`;
@@ -37,7 +46,7 @@ export function createThrottle(options: ThrottleOptions): Throttle {
       if (last === undefined) {
         return true;
       }
-      return Date.now() - last >= options.cooldownMs;
+      return Date.now() - last >= getCooldownMs();
     },
 
     record(searchId: string, channel: NotificationChannel): void {
@@ -52,7 +61,7 @@ export function createThrottle(options: ThrottleOptions): Throttle {
     isFlightDuplicate(fingerprint: string): boolean {
       const seenAt = seenFlights.get(fingerprint);
       if (seenAt === undefined) return false;
-      if (Date.now() - seenAt >= flightDedupTtlMs) {
+      if (Date.now() - seenAt >= getFlightDedupTtlMs()) {
         // Stale entry — purge and treat as new
         seenFlights.delete(fingerprint);
         return false;

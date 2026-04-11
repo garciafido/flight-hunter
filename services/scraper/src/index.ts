@@ -2,7 +2,7 @@
 import { Queue } from 'bullmq';
 import { PrismaClient } from '@flight-hunter/shared/db';
 import { Redis } from 'ioredis';
-import { QUEUE_NAMES } from '@flight-hunter/shared';
+import { QUEUE_NAMES, startRuntimeConfigPoller } from '@flight-hunter/shared';
 import { KiwiSource } from './sources/kiwi.js';
 import { SkyscannerSource } from './sources/skyscanner.js';
 import { GoogleFlightsSource } from './sources/google-flights.js';
@@ -23,6 +23,12 @@ const redis = new Redis({
 
 const prisma = new PrismaClient({
   datasourceUrl: process.env.DATABASE_URL,
+});
+
+// Refresh runtime config (scraperMaxDatesPerPair, etc.) every 30s.
+startRuntimeConfigPoller(prisma, {
+  intervalMs: 30_000,
+  onError: (err) => console.error('Failed to refresh runtime config:', err),
 });
 
 const rawResultsQueue = new Queue(QUEUE_NAMES.RAW_RESULTS, { connection: redis });

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { fetchSystemStatus, fetchSystemSettings, updateSystemSettings } from '@/lib/api';
 import type { SystemSettings } from '@/lib/api';
+import { RuntimeConfigSection } from '@/components/runtime-config-section';
 
 function StatusDot({ status }: { status: string }) {
   const ok = status === 'ok';
@@ -388,7 +389,7 @@ export default function SystemPage() {
 
       {/* Sources cards */}
       {Array.isArray(status.sources) && status.sources.length > 0 && (
-        <div>
+        <div style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: 16, marginBottom: 16 }}>Fuentes de datos</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
             {status.sources.map((src: any) => (
@@ -397,6 +398,9 @@ export default function SystemPage() {
           </div>
         </div>
       )}
+
+      {/* Runtime config: editable baggage policies, AR taxes, tunables */}
+      <RuntimeConfigSection />
     </div>
   );
 }

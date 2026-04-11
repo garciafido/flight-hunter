@@ -4,7 +4,7 @@ import { PrismaClient } from '@flight-hunter/shared/db';
 import { createLogger } from '@flight-hunter/shared/logger';
 import { Redis } from 'ioredis';
 import { WebSocketServer } from 'ws';
-import { QUEUE_NAMES, AlertJobSchema } from '@flight-hunter/shared';
+import { QUEUE_NAMES, AlertJobSchema, startRuntimeConfigPoller, getRuntimeConfig } from '@flight-hunter/shared';
 import type { AlertJob } from '@flight-hunter/shared';
 import { createTelegramChannel } from './channels/telegram.js';
 import { createEmailChannel } from './channels/email.js';
@@ -41,10 +41,17 @@ const email = createEmailChannel({
 
 const wsBroadcaster = createWebSocketBroadcaster();
 
-const dedupTtlMs = parseInt(process.env.NOTIFIER_DEDUP_TTL_MS ?? String(6 * 60 * 60 * 1000), 10);
+// Runtime config poller — refreshes baggage policies, AR taxes, dedup/cooldown
+// timings, etc. from system_settings.runtime_config every 30s. The throttle and
+// worker read live values via getters so changes apply without restart.
+startRuntimeConfigPoller(prisma, {
+  intervalMs: 30_000,
+  onError: (err) => logger.error({ err }, 'Failed to refresh runtime config'),
+});
+
 const throttle = createThrottle({
-  cooldownMs: parseInt(process.env.NOTIFIER_COOLDOWN_MS ?? String(2 * 60 * 60 * 1000), 10),
-  flightDedupTtlMs: dedupTtlMs,
+  cooldownMs: () => getRuntimeConfig().notifierCooldownMs,
+  flightDedupTtlMs: () => getRuntimeConfig().notifierDedupTtlMs,
 });
 
 const notifierWorker = new NotifierWorker({
@@ -53,7 +60,8 @@ const notifierWorker = new NotifierWorker({
   wsBroadcaster,
   throttle,
   prisma,
-  dedupTtlMs,
+  // Worker reads live value on every job (not captured at construction)
+  dedupTtlMs: () => getRuntimeConfig().notifierDedupTtlMs,
 });
 
 const wss = new WebSocketServer({ port: 8080 });

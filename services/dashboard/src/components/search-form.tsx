@@ -30,6 +30,9 @@ interface FormState {
   maxUnplannedStops: number;
   maxTotalTravelHours: number; // 0 = unlimited
   airlineBlacklist: string;     // comma-separated, parsed to string[] on submit
+  // Baggage (per passenger, per direction)
+  outboundCheckedBags: number;
+  returnCheckedBags: number;
   // Alerts
   scoreThresholdInfo: number;
   scoreThresholdGood: number;
@@ -70,6 +73,8 @@ export function SearchForm({ onCreated }: SearchFormProps) {
     maxUnplannedStops: 1,
     maxTotalTravelHours: 0,
     airlineBlacklist: '',
+    outboundCheckedBags: 0,
+    returnCheckedBags: 0,
     scoreThresholdInfo: 30,
     scoreThresholdGood: 60,
     scoreThresholdUrgent: 80,
@@ -182,6 +187,8 @@ export function SearchForm({ onCreated }: SearchFormProps) {
         departureFrom: form.departureFrom,
         departureTo: form.departureTo,
         maxConnectionHours: Number(form.maxConnectionHours),
+        outboundCheckedBags: Number(form.outboundCheckedBags),
+        returnCheckedBags: Number(form.returnCheckedBags),
         waypoints: form.waypoints.map(wp => ({
           airport: wp.airport,
           gap: wp.type === 'stay'
@@ -535,6 +542,43 @@ export function SearchForm({ onCreated }: SearchFormProps) {
             placeholder="ej. JetSMART, Sky Airline"
             style={inputStyle}
           />
+        </div>
+
+        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px dashed #e5e7eb' }}>
+          <div style={{ fontSize: 13, color: '#475569', marginBottom: 8, fontWeight: 600 }}>
+            Equipaje despachado (por persona)
+          </div>
+          <div style={rowStyle}>
+            <div>
+              <label style={labelStyle}>Valijas a la ida</label>
+              <input
+                name="outboundCheckedBags"
+                data-testid="filter-outbound-bags"
+                value={form.outboundCheckedBags}
+                onChange={handleChange}
+                type="number"
+                min="0"
+                max="5"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Valijas a la vuelta</label>
+              <input
+                name="returnCheckedBags"
+                data-testid="filter-return-bags"
+                value={form.returnCheckedBags}
+                onChange={handleChange}
+                type="number"
+                min="0"
+                max="5"
+                style={inputStyle}
+              />
+            </div>
+          </div>
+          <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, fontStyle: 'italic' }}>
+            Las valijas a la ida aplican a todos los tramos antes del regreso al origen. La de vuelta solo al último tramo. Costo estimado por aerolínea, configurable en /system.
+          </p>
         </div>
       </div>
 

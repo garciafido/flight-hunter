@@ -2,7 +2,7 @@ import type { Queue } from 'bullmq';
 import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { FlightResult, AlertLevel, ScoreBreakdown } from '@flight-hunter/shared';
 import type { AlertJob } from '@flight-hunter/shared';
-import { estimateCarryOnUSD, estimateArgentineTotalUSD } from '@flight-hunter/shared';
+import { estimateCarryOnUSD, estimateCheckedBagUSD, estimateArgentineTotalUSD } from '@flight-hunter/shared';
 import { PriceAggregator } from './aggregation/price-aggregator.js';
 
 export interface PublishPayload {
@@ -111,19 +111,42 @@ export class Publisher {
     }>;
     /** When true, populate per-leg and total carry-on cost estimates. */
     requireCarryOn?: boolean;
+    /** Checked bags per passenger on outbound (non-final) legs. */
+    outboundCheckedBags?: number;
+    /** Checked bags per passenger on the final return leg. */
+    returnCheckedBags?: number;
   }): Promise<void> {
-    const { searchId, flightResultId, legs, totalPricePerPerson, score, scoreBreakdown, alertLevel, waypoints, requireCarryOn } = opts;
+    const {
+      searchId, flightResultId, legs, totalPricePerPerson, score, scoreBreakdown,
+      alertLevel, waypoints, requireCarryOn, outboundCheckedBags = 0,
+      returnCheckedBags = 0,
+    } = opts;
     const firstLeg = legs[0];
     const lastLeg = legs[legs.length - 1];
 
-    // Per-leg carry-on estimates and totals (only when the user requested carry-on)
+    // All baggage costs are PER PERSON (consistent with totalPricePerPerson).
+    // The user can mentally multiply by passengers if they want the group total.
+
+    // Per-leg carry-on estimate (only when the user requested carry-on).
     const perLegCarryOn = requireCarryOn
       ? legs.map((l) => estimateCarryOnUSD(l.outbound.airline))
       : undefined;
     const totalCarryOn = perLegCarryOn?.reduce((a, b) => a + b, 0);
 
-    // Argentine total estimate is always populated; UI decides whether to show it.
-    const argTotal = estimateArgentineTotalUSD(totalPricePerPerson);
+    // Per-leg checked-bag estimate. Outbound bags apply to all legs except
+    // the last; return bags only apply to the last.
+    const lastIdx = legs.length - 1;
+    const perLegCheckedBag = legs.map((l, i) => {
+      const bags = i === lastIdx ? returnCheckedBags : outboundCheckedBags;
+      if (bags === 0) return 0;
+      return estimateCheckedBagUSD(l.outbound.airline) * bags;
+    });
+    const totalCheckedBag = perLegCheckedBag.reduce((a, b) => a + b, 0);
+    const checkedBagFieldOrUndefined = totalCheckedBag > 0 ? totalCheckedBag : undefined;
+
+    // Argentine total: includes baggage extras (you pay them too with the same card).
+    const trueTotalUSD = totalPricePerPerson + (totalCarryOn ?? 0) + totalCheckedBag;
+    const argTotal = estimateArgentineTotalUSD(trueTotalUSD);
 
     const alertJob: AlertJob = {
       searchId,
@@ -153,10 +176,12 @@ export class Publisher {
           bookingUrl: l.bookingUrl,
           durationMinutes: l.outbound.durationMinutes,
           ...(perLegCarryOn !== undefined ? { carryOnEstimateUSD: perLegCarryOn[i] } : {}),
+          ...(perLegCheckedBag[i] > 0 ? { checkedBagEstimateUSD: perLegCheckedBag[i] } : {}),
         })),
         totalPrice: totalPricePerPerson,
         ...(waypoints ? { waypoints } : {}),
         ...(totalCarryOn !== undefined ? { carryOnEstimateUSD: totalCarryOn } : {}),
+        ...(checkedBagFieldOrUndefined !== undefined ? { checkedBagEstimateUSD: checkedBagFieldOrUndefined } : {}),
         argTaxEstimateUSD: argTotal,
       },
     };

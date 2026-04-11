@@ -45,6 +45,11 @@ export interface SearchConfig {
   passengers: number;
   waypoints: Waypoint[];      // 1+ stops; trip always returns to origin
   maxConnectionHours: number; // global default for connection gaps
+  // Checked bags per passenger on legs LEAVING the origin (everything before
+  // the final return-to-origin leg). Defaults to 0 = no checked bags.
+  outboundCheckedBags?: number;
+  // Checked bags per passenger on the FINAL leg back to origin.
+  returnCheckedBags?: number;
   proxyRegions: ProxyRegion[];
   scanIntervalMin: number;
   active: boolean;
