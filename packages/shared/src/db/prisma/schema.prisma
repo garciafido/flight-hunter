@@ -12,27 +12,22 @@ model Search {
   id                String    @id @default(uuid()) @db.Uuid
   name              String
   origin            String
-  destination       String
-  stopover          Json?
   departureFrom     DateTime  @map("departure_from") @db.Date
   departureTo       DateTime  @map("departure_to") @db.Date
-  returnMinDays     Int       @map("return_min_days")
-  returnMaxDays     Int       @map("return_max_days")
   passengers        Int
   filters           Json
   alertConfig       Json      @map("alert_config")
   proxyRegions      String[]  @map("proxy_regions")
   scanIntervalMin   Int       @map("scan_interval_min")
   active            Boolean   @default(true)
-  mode              String    @default("roundtrip")
-  legs              Json?
+  waypoints           Json
+  maxConnectionHours  Int      @default(6) @map("max_connection_hours")
   destinationMode       String   @default("single") @map("destination_mode")
   destinationCandidates Json?    @map("destination_candidates")
   windowMode            Boolean  @default(false) @map("window_mode")
   windowDuration        Int?     @map("window_duration")
   windowFlexibility     Int      @default(0) @map("window_flexibility")
   maxCombos             Int      @default(100) @map("max_combos")
-  stopoverPlan          Json?    @map("stopover_plan")
   status            String    @default("active")
   snoozedUntil      DateTime? @map("snoozed_until") @db.Timestamptz
   digestEnabled     Boolean   @default(true) @map("digest_enabled")
@@ -87,8 +82,6 @@ model FlightResult {
   score               Decimal?  @db.Decimal(5, 2)
   scoreBreakdown      Json?     @map("score_breakdown")
   alertLevel          String?   @map("alert_level")
-  legIndex            Int       @default(0) @map("leg_index")
-  planIndex           Int       @default(0) @map("plan_index")
   scrapedAt           DateTime  @map("scraped_at") @db.Timestamptz
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
@@ -97,7 +90,6 @@ model FlightResult {
 
   @@index([searchId, scrapedAt(sort: Desc)])
   @@index([searchId, pricePerPerson])
-  @@index([searchId, legIndex])
   @@map("flight_results")
 }
 
