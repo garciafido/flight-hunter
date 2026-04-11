@@ -21,6 +21,9 @@ async function main() {
         { airport: 'LIM', gap: { type: 'stay', minDays: 3, maxDays: 4 } },
         { airport: 'CUZ', gap: { type: 'stay', minDays: 7, maxDays: 10 } },
       ],
+      // Voy sin valija despachada, vuelvo con una.
+      outboundCheckedBags: 0,
+      returnCheckedBags: 1,
       proxyRegions: ['CL', 'AR'],
       scanIntervalMin: 5,
       active: true,
