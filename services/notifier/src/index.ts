@@ -41,9 +41,10 @@ const email = createEmailChannel({
 
 const wsBroadcaster = createWebSocketBroadcaster();
 
+const dedupTtlMs = parseInt(process.env.NOTIFIER_DEDUP_TTL_MS ?? String(6 * 60 * 60 * 1000), 10);
 const throttle = createThrottle({
   cooldownMs: parseInt(process.env.NOTIFIER_COOLDOWN_MS ?? String(2 * 60 * 60 * 1000), 10),
-  flightDedupTtlMs: parseInt(process.env.NOTIFIER_DEDUP_TTL_MS ?? String(6 * 60 * 60 * 1000), 10),
+  flightDedupTtlMs: dedupTtlMs,
 });
 
 const notifierWorker = new NotifierWorker({
@@ -52,6 +53,7 @@ const notifierWorker = new NotifierWorker({
   wsBroadcaster,
   throttle,
   prisma,
+  dedupTtlMs,
 });
 
 const wss = new WebSocketServer({ port: 8080 });

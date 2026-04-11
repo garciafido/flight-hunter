@@ -29,6 +29,9 @@ export interface NotifierDeps {
   wsBroadcaster: WebSocketBroadcaster;
   throttle: Throttle;
   prisma: PrismaClient;
+  /** Window (ms) within which a (searchId, flightResultId, level) tuple is
+   * considered already alerted. Default 6 hours. */
+  dedupTtlMs?: number;
   /** Optional override for webhook channel (for testing). If not provided, created dynamically from settings. */
   webhook?: WebhookChannel | null;
   /** Optional override for slack channel (for testing). If not provided, created dynamically from settings. */
@@ -56,6 +59,28 @@ export class NotifierWorker {
   async process(alert: AlertJob): Promise<void> {
     const fingerprint = buildFingerprint(alert);
 
+    // Persistent dedup: ask the DB whether we already inserted an alert for
+    // this exact (searchId, flightResultId, level) recently. The previous
+    // in-memory Set was confused by manual cleanups: deleting rows from the
+    // alerts table did not clear the Set, so the same combo would be silently
+    // suppressed forever. Querying the DB keeps the dedup state in sync with
+    // whatever is actually persisted.
+    const dedupTtlMs = this.deps.dedupTtlMs ?? 6 * 60 * 60 * 1000;
+    const dedupCutoff = new Date(Date.now() - dedupTtlMs);
+    const recent = await this.deps.prisma.alert.findFirst({
+      where: {
+        searchId: alert.searchId,
+        flightResultId: alert.flightResultId,
+        level: alert.level,
+        sentAt: { gte: dedupCutoff },
+      },
+      select: { id: true },
+    });
+    if (recent) {
+      return;
+    }
+    // Keep the in-memory throttle as a secondary cache to avoid hitting the
+    // DB for the same job twice in the same process tick.
     if (this.deps.throttle.isFlightDuplicate(fingerprint)) {
       return;
     }

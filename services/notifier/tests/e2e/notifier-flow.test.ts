@@ -31,6 +31,7 @@ describe('Notifier E2E Flow', () => {
       },
       alert: {
         create: vi.fn().mockResolvedValue({ id: 'alert-1' }),
+        findFirst: vi.fn().mockResolvedValue(null),
       },
     };
 
@@ -91,6 +92,7 @@ describe('Notifier E2E Flow', () => {
       },
       alert: {
         create: vi.fn().mockResolvedValue({ id: 'alert-1' }),
+        findFirst: vi.fn().mockResolvedValue(null),
       },
     };
 
@@ -154,7 +156,7 @@ describe('Notifier E2E Flow', () => {
       search: {
         findUnique: vi.fn().mockResolvedValue({ id: 'search-1', name: 'Test' }),
       },
-      alert: { create: vi.fn().mockResolvedValue({ id: 'alert-1' }) },
+      alert: { create: vi.fn().mockResolvedValue({ id: 'alert-1' }), findFirst: vi.fn().mockResolvedValue(null) },
     };
 
     const worker = new NotifierWorker({

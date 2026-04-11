@@ -38,7 +38,10 @@ function makeDefaultDeps() {
     },
     prisma: {
       search: { findUnique: vi.fn().mockResolvedValue({ id: 'search-uuid-1', name: 'Test Search' }) },
-      alert: { create: vi.fn().mockResolvedValue({}) },
+      alert: {
+        create: vi.fn().mockResolvedValue({}),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
     },
     // Disable new optional channels by default (null = explicitly disabled)
     webhook: null,
@@ -71,7 +74,7 @@ describe('NotifierWorker', () => {
     const deps = makeDeps({
       prisma: {
         search: { findUnique: vi.fn().mockResolvedValue(null) },
-        alert: { create: vi.fn() },
+        alert: { create: vi.fn(), findFirst: vi.fn().mockResolvedValue(null) },
       },
     });
     const worker = new NotifierWorker(deps as never);
