@@ -139,7 +139,11 @@ export class AnalyzerWorker {
     const searchMode = (search as any).mode ?? 'roundtrip';
     const searchLegs = (search as any).legs;
     if (searchMode === 'split' && Array.isArray(searchLegs) && searchLegs.length > 0) {
-      await this.evaluateCombos(data.searchId, searchLegs.length, searchConfig, search as any);
+      try {
+        await this.evaluateCombos(data.searchId, searchLegs.length, searchConfig, search as any);
+      } catch (err) {
+        console.error('evaluateCombos failed:', err instanceof Error ? err.message : err);
+      }
     }
   }
 
@@ -161,7 +165,8 @@ export class AnalyzerWorker {
         take: TOP_N,
       });
 
-      const results: FlightResult[] = rows.map((row: any) => ({
+      const results: (FlightResult & { id: string })[] = rows.map((row: any) => ({
+        id: row.id,
         searchId: row.searchId,
         source: row.source as FlightResult['source'],
         outbound: row.outbound as FlightResult['outbound'],
@@ -231,11 +236,15 @@ export class AnalyzerWorker {
     // Publish the combo as an alert if it qualifies (split-mode only path).
     // The total price here represents the FULL trip cost per person,
     // which is what the user's thresholds actually refer to.
-    if (alertLevel && savedComboId) {
+    // The Alert.flightResultId FK points at flight_results (not flight_combos),
+    // so we use the first leg's id for that field; the AlertJob.combo payload
+    // carries the full leg list for display.
+    const firstLegId = (best.combo[0] as any).id as string | undefined;
+    if (alertLevel && firstLegId) {
       try {
         await this.deps.publisher.publishComboAlert({
           searchId,
-          flightResultId: savedComboId,
+          flightResultId: firstLegId,
           legs: best.combo,
           totalPricePerPerson: totalPrice,
           score: best.score,
