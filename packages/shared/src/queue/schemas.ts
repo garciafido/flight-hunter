@@ -36,8 +36,6 @@ export const RawResultJobSchema = z.object({
   bookingUrl: z.string().url(),
   scrapedAt: z.string().datetime(),
   proxyRegion: z.enum(['CL', 'AR']),
-  legIndex: z.number().int().min(0).default(0),
-  planIndex: z.number().int().min(0).default(0),
   // Currency conversion fields (optional; populated after exchange rate lookup)
   priceOriginal: z.number().optional(),
   currencyOriginal: z.string().length(3).optional(),

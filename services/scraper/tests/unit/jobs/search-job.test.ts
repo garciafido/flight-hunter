@@ -92,8 +92,8 @@ describe('SearchJobProcessor waypoint dispatch', () => {
 
     expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(2);
     const calledPairs = vi.mocked(oneWaySource.searchOneWay).mock.calls.map((c: any) => ({
-      origin: c[2].origin,
-      destination: c[2].destination,
+      origin: c[1].origin,
+      destination: c[1].destination,
     }));
     expect(calledPairs).toContainEqual({ origin: 'SCL', destination: 'MAD' });
     expect(calledPairs).toContainEqual({ origin: 'MAD', destination: 'SCL' });
@@ -117,8 +117,8 @@ describe('SearchJobProcessor waypoint dispatch', () => {
     // 6 unique pairs × 1 region × 1 source = 6 calls
     expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(6);
     const calledPairs = vi.mocked(oneWaySource.searchOneWay).mock.calls.map((c: any) => ({
-      origin: c[2].origin,
-      destination: c[2].destination,
+      origin: c[1].origin,
+      destination: c[1].destination,
     }));
     // All 6 unique pairs from the 2 permutations
     expect(calledPairs).toContainEqual({ origin: 'BUE', destination: 'LIM' });
@@ -241,21 +241,6 @@ describe('SearchJobProcessor waypoint dispatch', () => {
     warnSpy.mockRestore();
   });
 
-  it('passes legIndex=0 to searchOneWay for all pairs', async () => {
-    const processor = new SearchJobProcessor(
-      [oneWaySource as never],
-      vpnRouter as never,
-      queue as never,
-    );
-
-    const config = makeConfig({ origin: 'SCL', waypoints: [makeStayWaypoint('MAD')], proxyRegions: ['CL'] });
-    await processor.execute(config);
-
-    const calls = vi.mocked(oneWaySource.searchOneWay).mock.calls;
-    for (const call of calls) {
-      expect(call[1]).toBe(0);
-    }
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -313,8 +298,8 @@ describe('SearchJobProcessor flexible destination mode', () => {
     await processor.execute(config);
 
     const calledPairs = vi.mocked(oneWaySource.searchOneWay).mock.calls.map((c: any) => ({
-      origin: c[2].origin,
-      destination: c[2].destination,
+      origin: c[1].origin,
+      destination: c[1].destination,
     }));
     expect(calledPairs).toContainEqual({ origin: 'SCL', destination: 'BOG' });
     expect(calledPairs).toContainEqual({ origin: 'BOG', destination: 'SCL' });

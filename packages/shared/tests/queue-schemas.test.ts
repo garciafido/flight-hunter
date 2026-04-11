@@ -156,27 +156,6 @@ describe('RawResultJobSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('defaults legIndex to 0 when omitted', () => {
-    const result = RawResultJobSchema.safeParse(validRawResult);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.legIndex).toBe(0);
-    }
-  });
-
-  it('accepts explicit legIndex value', () => {
-    const result = RawResultJobSchema.safeParse({ ...validRawResult, legIndex: 2 });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.legIndex).toBe(2);
-    }
-  });
-
-  it('rejects negative legIndex', () => {
-    const result = RawResultJobSchema.safeParse({ ...validRawResult, legIndex: -1 });
-    expect(result.success).toBe(false);
-  });
-
   it('accepts all valid source values', () => {
     for (const source of ['kiwi', 'skyscanner', 'google-flights'] as const) {
       const result = RawResultJobSchema.safeParse({ ...validRawResult, source });

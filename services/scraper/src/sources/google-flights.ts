@@ -1,5 +1,7 @@
-import type { FlightResult, SearchConfig, ProxyRegion, SearchLeg } from '@flight-hunter/shared';
+import type { FlightResult, SearchConfig, ProxyRegion } from '@flight-hunter/shared';
 import type { FlightSource } from './base-source.js';
+
+type LegInput = { origin: string; destination: string; departureFrom: Date; departureTo: Date };
 
 function formatDate(d: Date): string {
   // Use UTC components so the URL date matches the date we store via
@@ -33,50 +35,6 @@ function computeDurationMinutes(
 
 export class GoogleFlightsSource implements FlightSource {
   readonly name = 'google-flights';
-
-  buildUrl(config: SearchConfig, depDate?: Date, retDate?: Date): string {
-    const d = depDate ?? new Date(config.departureFrom);
-    const r = retDate ?? (() => {
-      const x = new Date(d);
-      x.setDate(x.getDate() + config.returnMinDays);
-      return x;
-    })();
-    return `https://www.google.com/travel/flights?q=Flights+to+${config.destination}+from+${config.origin}+on+${formatDate(d)}+through+${formatDate(r)}&curr=USD&hl=en`;
-  }
-
-  /**
-   * Generates date pairs (departure, return) covering the configured ranges.
-   * Caps the number of combinations to avoid hammering Google.
-   */
-  private buildDatePairs(config: SearchConfig): Array<{ dep: Date; ret: Date }> {
-    const pairs: Array<{ dep: Date; ret: Date }> = [];
-    const depFrom = new Date(config.departureFrom);
-    const depTo = new Date(config.departureTo);
-
-    // Departure dates: every day in the range
-    const departures: Date[] = [];
-    const cursor = new Date(depFrom);
-    while (cursor.getTime() <= depTo.getTime()) {
-      departures.push(new Date(cursor));
-      cursor.setDate(cursor.getDate() + 1);
-    }
-
-    // Return offsets: sample min, max, and a couple in between
-    const offsets = new Set<number>([config.returnMinDays, config.returnMaxDays]);
-    const mid = Math.round((config.returnMinDays + config.returnMaxDays) / 2);
-    if (mid !== config.returnMinDays && mid !== config.returnMaxDays) offsets.add(mid);
-
-    for (const dep of departures) {
-      for (const offset of offsets) {
-        const ret = new Date(dep);
-        ret.setDate(ret.getDate() + offset);
-        pairs.push({ dep, ret });
-        // Cap total pairs to avoid abuse
-        if (pairs.length >= 12) return pairs;
-      }
-    }
-    return pairs;
-  }
 
   private async scrapePage(
     page: import('playwright').Page,
@@ -253,7 +211,7 @@ export class GoogleFlightsSource implements FlightSource {
   /**
    * Generates departure dates for a leg, capped at 8 to avoid abuse.
    */
-  private buildLegDates(leg: SearchLeg): Date[] {
+  private buildLegDates(leg: LegInput): Date[] {
     const dates: Date[] = [];
     const cursor = new Date(leg.departureFrom);
     const depTo = new Date(leg.departureTo);
@@ -264,10 +222,14 @@ export class GoogleFlightsSource implements FlightSource {
     return dates;
   }
 
+  async search(_config: SearchConfig, _proxyUrl: string | null): Promise<FlightResult[]> {
+    console.warn(`${this.name}: full-roundtrip search is not used in the waypoint model — returning []`);
+    return [];
+  }
+
   async searchOneWay(
     config: SearchConfig,
-    legIndex: number,
-    leg: SearchLeg,
+    leg: LegInput,
     proxyUrl: string | null,
   ): Promise<FlightResult[]> {
     let browser;
@@ -286,7 +248,7 @@ export class GoogleFlightsSource implements FlightSource {
       const page = await context.newPage();
 
       const dates = this.buildLegDates(leg);
-      console.log(`    Google Flights one-way leg ${legIndex} (${leg.origin}→${leg.destination}): scraping ${dates.length} date(s)`);
+      console.log(`    Google Flights one-way (${leg.origin}→${leg.destination}): scraping ${dates.length} date(s)`);
 
       const allResults: FlightResult[] = [];
 
@@ -329,7 +291,6 @@ export class GoogleFlightsSource implements FlightSource {
               bookingUrl: url,
               scrapedAt: new Date(),
               proxyRegion,
-              legIndex,
             });
           }
         } catch (err) {
@@ -338,91 +299,10 @@ export class GoogleFlightsSource implements FlightSource {
       }
 
       await browser.close();
-      console.log(`    Google Flights one-way leg ${legIndex}: total ${allResults.length} result(s)`);
+      console.log(`    Google Flights one-way (${leg.origin}→${leg.destination}): total ${allResults.length} result(s)`);
       return allResults;
     } catch (err) {
       console.error(`    Google Flights one-way error:`, err instanceof Error ? err.message : err);
-      return [];
-    } finally {
-      await browser?.close().catch(() => {});
-    }
-  }
-
-  async search(config: SearchConfig, proxyUrl: string | null): Promise<FlightResult[]> {
-    let browser;
-    try {
-      const { chromium } = await import('playwright');
-      const proxyRegion = (config.proxyRegions[0] ?? 'CL') as ProxyRegion;
-
-      const launchOptions: Parameters<typeof chromium.launch>[0] = { headless: true };
-      if (proxyUrl) launchOptions.proxy = { server: proxyUrl };
-
-      browser = await chromium.launch(launchOptions);
-      const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        locale: 'en-US',
-      });
-      const page = await context.newPage();
-
-      const datePairs = this.buildDatePairs(config);
-      console.log(`    Google Flights: scraping ${datePairs.length} date combination(s)`);
-
-      const allResults: FlightResult[] = [];
-
-      for (const { dep, ret } of datePairs) {
-        const url = this.buildUrl(config, dep, ret);
-        try {
-          const flights = await this.scrapePage(page, url);
-          console.log(`      ${formatDate(dep)} → ${formatDate(ret)}: ${flights.length} flight(s)`);
-
-          for (const f of flights) {
-            const stopCount = /nonstop/i.test(f.stops) ? 0 : parseInt(f.stops, 10) || 1;
-            const outDepIso = this.timeStringToIso(dep, f.departureTime, 0);
-            const outArrIso = this.timeStringToIso(dep, f.arrivalTime, f.nextDay ? 1 : 0);
-            const outDuration = computeDurationMinutes(outDepIso, outArrIso, f.departureTime, f.arrivalTime);
-            // For the return leg we have no scraped times in roundtrip mode,
-            // so fall back to midnight on the return date.
-            const inDepIso = this.timeStringToIso(ret, undefined, 0);
-            const inArrIso = this.timeStringToIso(ret, undefined, 0);
-            allResults.push({
-              searchId: config.id,
-              source: 'google-flights' as const,
-              outbound: {
-                departure: { airport: config.origin, time: outDepIso },
-                arrival: { airport: config.destination, time: outArrIso },
-                airline: f.airline || 'Unknown',
-                flightNumber: 'N/A',
-                durationMinutes: outDuration,
-                stops: stopCount,
-              },
-              inbound: {
-                departure: { airport: config.destination, time: inDepIso },
-                arrival: { airport: config.origin, time: inArrIso },
-                airline: f.airline || 'Unknown',
-                flightNumber: 'N/A',
-                durationMinutes: 0,
-                stops: stopCount,
-              },
-              totalPrice: f.price,
-              currency: 'USD',
-              pricePer: 'total' as const,
-              passengers: config.passengers,
-              carryOnIncluded: true,
-              bookingUrl: url,
-              scrapedAt: new Date(),
-              proxyRegion,
-            });
-          }
-        } catch (err) {
-          console.error(`      ${formatDate(dep)} → ${formatDate(ret)} failed:`, err instanceof Error ? err.message : err);
-        }
-      }
-
-      await browser.close();
-      console.log(`    Google Flights: total ${allResults.length} result(s)`);
-      return allResults;
-    } catch (err) {
-      console.error(`    Google Flights error:`, err instanceof Error ? err.message : err);
       return [];
     } finally {
       await browser?.close().catch(() => {});

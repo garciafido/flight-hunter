@@ -78,7 +78,7 @@ export class SearchJobProcessor {
           const { result, skipped } = await this.resilience.callSource(
             source.name,
             false,
-            () => source.searchOneWay(config, 0, leg, proxyUrl),
+            () => source.searchOneWay(config, leg, proxyUrl),
           );
           if (skipped) continue;
           const results: FlightResult[] = result ?? [];
