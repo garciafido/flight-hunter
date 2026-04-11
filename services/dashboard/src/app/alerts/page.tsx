@@ -92,7 +92,7 @@ export default function AlertsPage() {
   }
 
   function buildShareText(alert: any, searchName: string): string {
-    const combo = alert.comboInfo as { legs?: any[]; totalPrice?: number; plan?: any } | null;
+    const combo = alert.comboInfo as { legs?: any[]; totalPrice?: number; waypoints?: any[] } | null;
     const isCombo = !!(combo && Array.isArray(combo.legs) && combo.legs.length > 0);
     const levelEmoji = alert.level === 'urgent' ? '🚨' : alert.level === 'good' ? '✅' : 'ℹ️';
 
@@ -101,11 +101,13 @@ export default function AlertsPage() {
       const totalPrice = combo!.totalPrice;
       const lines: string[] = [];
       lines.push(`${levelEmoji} *${searchName}*`);
-      if (combo!.plan) {
-        const positionLabel =
-          combo!.plan.position === 'start' ? 'al inicio' :
-          combo!.plan.position === 'end' ? 'al final' : '';
-        lines.push(`🏨 ${combo!.plan.days}d en ${combo!.plan.airport} ${positionLabel}`.trim());
+      if (combo!.waypoints && combo!.waypoints.length > 0) {
+        const summary = combo!.waypoints.map((wp: any) =>
+          wp.type === 'stay'
+            ? `🏨 ${wp.airport} ${wp.minDays}-${wp.maxDays}d`
+            : `✈ ${wp.airport} <${wp.maxHours}h`,
+        ).join(' · ');
+        lines.push(summary);
       }
       lines.push(`💰 *${currency} ${totalPrice} / persona* (${combo!.legs!.length} tramos)`);
       lines.push('');
@@ -294,7 +296,7 @@ export default function AlertsPage() {
 
       {alerts.map((a: any) => {
         const fb = feedbackState[a.id];
-        const combo = a.comboInfo as { legs?: any[]; totalPrice?: number } | null;
+        const combo = a.comboInfo as { legs?: any[]; totalPrice?: number; waypoints?: any[] } | null;
         const isCombo = !!(combo && Array.isArray(combo.legs) && combo.legs.length > 0);
         const displayPrice = isCombo
           ? combo!.totalPrice
@@ -324,6 +326,21 @@ export default function AlertsPage() {
                   <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
                     Enviado: {new Date(a.sentAt).toLocaleString('es-CL')} · Canales: {a.channelsSent?.join(', ')}
                   </div>
+                  {isCombo && combo!.waypoints && combo!.waypoints.length > 0 && (
+                    <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {combo!.waypoints.map((wp: any, i: number) => (
+                        <span key={i} style={{
+                          fontSize: 11, fontWeight: 600,
+                          background: '#eff6ff', color: '#1d4ed8',
+                          padding: '2px 8px', borderRadius: 10,
+                        }}>
+                          {wp.type === 'stay'
+                            ? `🏨 ${wp.airport} ${wp.minDays}-${wp.maxDays}d`
+                            : `✈ ${wp.airport} <${wp.maxHours}h`}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
