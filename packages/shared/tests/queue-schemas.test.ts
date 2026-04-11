@@ -293,6 +293,77 @@ describe('AlertJobSchema', () => {
     }
   });
 
+  it('accepts a combo with connection-type waypoints', () => {
+    const job = {
+      searchId: 'search-1',
+      flightResultId: 'result-abc',
+      level: 'good' as const,
+      score: 75,
+      scoreBreakdown: {
+        price: 80,
+        schedule: 70,
+        stopover: 90,
+        airline: 60,
+        flexibility: 75,
+      },
+      flightSummary: {
+        price: 850,
+        currency: 'USD',
+        airline: 'LATAM',
+        departureAirport: 'SCL',
+        arrivalAirport: 'MIA',
+        departureTime: '2025-07-10T10:00:00.000Z',
+        arrivalTime: '2025-07-10T18:00:00.000Z',
+        bookingUrl: 'https://kiwi.com/booking/123',
+      },
+      combo: {
+        legs: [
+          {
+            price: 350,
+            currency: 'USD',
+            airline: 'LATAM',
+            departureAirport: 'SCL',
+            arrivalAirport: 'GRU',
+            departureTime: '2026-07-25T10:00:00.000Z',
+            arrivalTime: '2026-07-25T18:00:00.000Z',
+            bookingUrl: 'https://booking.example.com/leg1',
+          },
+        ],
+        totalPrice: 500,
+        waypoints: [
+          { airport: 'GRU', type: 'connection' as const, maxHours: 5 },
+        ],
+      },
+    };
+    expect(() => AlertJobSchema.parse(job)).not.toThrow();
+  });
+
+  it('accepts a combo with stay-type waypoints', () => {
+    const result = AlertJobSchema.safeParse({
+      ...validAlertJob,
+      combo: {
+        totalPrice: 650,
+        legs: [
+          {
+            price: 350,
+            currency: 'USD',
+            airline: 'LATAM',
+            departureAirport: 'BUE',
+            arrivalAirport: 'CUZ',
+            departureTime: '2026-07-25T10:00:00.000Z',
+            arrivalTime: '2026-07-25T18:00:00.000Z',
+            bookingUrl: 'https://booking.example.com/leg1',
+          },
+        ],
+        waypoints: [
+          { airport: 'LIM', type: 'stay' as const, minDays: 3, maxDays: 4 },
+          { airport: 'CUZ', type: 'stay' as const, minDays: 7, maxDays: 10 },
+        ],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('accepts alert job without combo (roundtrip)', () => {
     const result = AlertJobSchema.safeParse(validAlertJob);
     expect(result.success).toBe(true);

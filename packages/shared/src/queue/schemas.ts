@@ -81,11 +81,13 @@ export const AlertJobSchema = z.object({
       durationMinutes: z.number().optional(),
     })),
     totalPrice: z.number(),
-    plan: z.object({
-      position: z.enum(['start', 'end', 'any']),
+    waypoints: z.array(z.object({
       airport: z.string(),
-      days: z.number(),
-    }).optional(),
+      type: z.enum(['stay', 'connection']),
+      minDays: z.number().optional(),
+      maxDays: z.number().optional(),
+      maxHours: z.number().optional(),
+    })).optional(),
   }).optional(),
 });
 
