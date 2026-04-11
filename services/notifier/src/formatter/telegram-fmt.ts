@@ -10,15 +10,17 @@ export function formatTelegram(alert: AlertJob, searchName: string): string {
   const { level, score, scoreBreakdown, flightSummary, combo } = alert;
   const header = LEVEL_HEADERS[level];
 
-  // Combo (split mode) rendering
+  // Combo (waypoint trip) rendering
   if (combo) {
     const currency = flightSummary.currency;
     let text = `🚨 *${header}* — ${searchName}\n\n`;
-    if (combo.plan) {
-      const positionLabel =
-        combo.plan.position === 'start' ? 'al inicio' :
-        combo.plan.position === 'end' ? 'al final' : '';
-      text += `🏨 *Plan:* ${combo.plan.days}d en ${combo.plan.airport} ${positionLabel}\n`;
+    if (combo.waypoints && combo.waypoints.length > 0) {
+      const summary = combo.waypoints.map((wp) =>
+        wp.type === 'stay'
+          ? `🏨 ${wp.airport} ${wp.minDays}-${wp.maxDays}d`
+          : `✈ ${wp.airport} <${wp.maxHours}h`,
+      ).join(' · ');
+      text += `*Itinerario:* ${summary}\n`;
     }
     text += `💰 *${currency} ${combo.totalPrice} total (combinación)*\n`;
     text += `⭐ Score: ${score}/100\n\n`;

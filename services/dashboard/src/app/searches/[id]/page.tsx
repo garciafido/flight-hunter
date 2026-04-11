@@ -211,7 +211,12 @@ export default function SearchDetailPage() {
             <h1 style={{ margin: 0, fontSize: 24 }}>{search.name}</h1>
             <StatusBadge status={search.status} snoozedUntil={search.snoozedUntil} />
           </div>
-          <div style={{ color: '#6b7280', fontSize: 14 }}>{search.origin} → {search.destination}</div>
+          <div style={{ color: '#6b7280', fontSize: 14 }}>
+            {search.origin}
+            {Array.isArray(search.waypoints) && search.waypoints.length > 0
+              ? ' → ' + search.waypoints.map((w: any) => w.airport).join(' → ') + ' → ' + search.origin
+              : ''}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <Link href={`/searches/${id}/settings`} style={{
@@ -350,8 +355,8 @@ export default function SearchDetailPage() {
         )}
       </div>
 
-      {/* Split combos */}
-      {search.mode === 'split' && (
+      {/* Combos (always relevant in waypoint trip model) */}
+      {Array.isArray(search.waypoints) && search.waypoints.length > 0 && (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 24, marginBottom: 24 }}>
           <h2 style={{ margin: '0 0 16px', fontSize: 16 }}>Mejores Combinaciones Split ({combos.length})</h2>
           {combos.length === 0 && <div style={{ color: '#9ca3af' }}>No hay combinaciones todavía. Los combos se generan automáticamente cuando se encuentran resultados para todos los tramos.</div>}
@@ -492,7 +497,7 @@ export default function SearchDetailPage() {
             key={r.id}
             airline={r.outbound?.airline ?? '—'}
             departureAirport={r.outbound?.departure?.airport ?? search.origin}
-            arrivalAirport={r.inbound?.departure?.airport ?? search.destination}
+            arrivalAirport={r.outbound?.arrival?.airport ?? '—'}
             departureTime={r.outbound?.departure?.time ?? r.scrapedAt}
             returnTime={r.inbound?.arrival?.time ?? r.scrapedAt}
             price={Number(r.pricePerPerson)}

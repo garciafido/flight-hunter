@@ -42,7 +42,7 @@ function makeRawJob(overrides: Partial<RawResultJob> = {}): RawResultJob {
 }
 
 /** Canonical waypoint search fixture: BUE → LIM (stay) → CUZ (stay) → BUE */
-function makeSearchRecord(alertConfig = {}, filters = {}, stopover?: object) {
+function makeSearchRecord(alertConfig = {}, filters = {}) {
   return {
     id: 'search-1',
     name: 'Test Search',
@@ -52,15 +52,12 @@ function makeSearchRecord(alertConfig = {}, filters = {}, stopover?: object) {
       { airport: 'CUZ', gap: { type: 'stay', minDays: 7, maxDays: 10 } },
     ],
     maxConnectionHours: 6,
-    stopover: stopover ?? null,
     filters: {
       airlineBlacklist: [],
       airlinePreferred: [],
       airportPreferred: {},
       airportBlacklist: {},
       maxUnplannedStops: 2,
-      minConnectionTime: 60,
-      maxConnectionTime: 480,
       requireCarryOn: false,
       maxTotalTravelTime: 2880,
       ...filters,
@@ -167,19 +164,16 @@ describe('AnalyzerWorker', () => {
     expect(call.scoreBreakdown.flexibility).toBe(50);
   });
 
-  it('passes stopover config from search to stopover score', async () => {
-    const stopoverConfig = { airport: 'NYC', minDays: 2, maxDays: 4 };
-    const deps = makeDeps(makeSearchRecord({}, {}, stopoverConfig));
+  it('returns 100 stopover score for a clean leg (no stopover)', async () => {
+    const deps = makeDeps(makeSearchRecord());
     const worker = new AnalyzerWorker(deps);
-    // Flight without stopover but search requires stopover → stopover score = 0
     await worker.process(makeRawJob());
     const call = vi.mocked(deps.publisher.publish).mock.calls[0][0];
-    expect(call.scoreBreakdown.stopover).toBe(0);
+    expect(call.scoreBreakdown.stopover).toBe(100);
   });
 
-  it('passes stopover from job to stopover score', async () => {
-    const stopoverConfig = { airport: 'NYC', minDays: 2, maxDays: 4 };
-    const deps = makeDeps(makeSearchRecord({}, {}, stopoverConfig));
+  it('returns 100 stopover score when the leg has a stopover', async () => {
+    const deps = makeDeps(makeSearchRecord());
     const worker = new AnalyzerWorker(deps);
     const job = makeRawJob({
       stopover: {

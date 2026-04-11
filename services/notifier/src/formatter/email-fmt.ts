@@ -11,16 +11,18 @@ export function formatEmail(alert: AlertJob, searchName: string): EmailPayload {
   const isUrgent = level === 'urgent';
   const levelLabel = isUrgent ? 'URGENTE' : level === 'good' ? 'BUENA OFERTA' : 'INFO';
 
-  // Combo (split mode) rendering
+  // Combo (waypoint trip) rendering
   if (combo) {
     const totalPrice = combo.totalPrice;
     const currency = flightSummary.currency;
-    const planLabel = combo.plan
-      ? ` · ${combo.plan.days}d en ${combo.plan.airport} ${
-          combo.plan.position === 'start' ? 'al inicio' : combo.plan.position === 'end' ? 'al final' : ''
-        }`.trimEnd()
+    const waypointsLabel = combo.waypoints && combo.waypoints.length > 0
+      ? ' · ' + combo.waypoints.map((wp) =>
+          wp.type === 'stay'
+            ? `${wp.airport} ${wp.minDays}-${wp.maxDays}d`
+            : `${wp.airport} <${wp.maxHours}h`,
+        ).join(' · ')
       : '';
-    const subject = `[Flight Hunter] ${levelLabel}: ${currency} ${totalPrice} total${planLabel} — ${searchName}`;
+    const subject = `[Flight Hunter] ${levelLabel}: ${currency} ${totalPrice} total${waypointsLabel} — ${searchName}`;
 
     const legsHtml = combo.legs
       .map((leg, i) => {
@@ -56,7 +58,7 @@ export function formatEmail(alert: AlertJob, searchName: string): EmailPayload {
   <div class="container">
     <h1>${levelLabel}: ${currency} ${totalPrice} total</h1>
     <p><strong>${searchName}</strong> — Combinación de vuelos separados</p>
-    ${combo.plan ? `<p style="background:#eff6ff;border-left:4px solid #2563eb;padding:8px 12px;color:#1e40af;font-size:13px;">Plan con escala extendida: <strong>${combo.plan.days} días en ${combo.plan.airport}</strong> ${combo.plan.position === 'start' ? 'al inicio del viaje' : combo.plan.position === 'end' ? 'al final del viaje' : ''}</p>` : ''}
+    ${combo.waypoints && combo.waypoints.length > 0 ? `<p style="background:#eff6ff;border-left:4px solid #2563eb;padding:8px 12px;color:#1e40af;font-size:13px;">Itinerario: ${combo.waypoints.map((wp) => wp.type === 'stay' ? `<strong>${wp.airport}</strong> (${wp.minDays}-${wp.maxDays}d)` : `<strong>${wp.airport}</strong> (<${wp.maxHours}h)`).join(' · ')}</p>` : ''}
     <p>Score: ${score}/100</p>
     ${legsHtml}
     <p class="breakdown">Desglose: precio=${scoreBreakdown.price} | horario=${scoreBreakdown.schedule} | stopover=${scoreBreakdown.stopover} | aerolínea=${scoreBreakdown.airline} | flex=${scoreBreakdown.flexibility}</p>

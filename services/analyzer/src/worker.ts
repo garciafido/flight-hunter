@@ -88,7 +88,7 @@ export class AnalyzerWorker {
 
     const scheduleScore = computeScheduleScore(data.outbound, data.inbound);
 
-    const stopoverScore = computeStopoverScore(data.stopover, searchConfig.stopover);
+    const stopoverScore = computeStopoverScore(data.stopover);
 
     const airlineScore = computeAirlineScore(data.outbound.airline, data.inbound.airline, filters);
 
