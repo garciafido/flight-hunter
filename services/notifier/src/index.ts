@@ -41,7 +41,10 @@ const email = createEmailChannel({
 
 const wsBroadcaster = createWebSocketBroadcaster();
 
-const throttle = createThrottle({ cooldownMs: 2 * 60 * 60 * 1000 });
+const throttle = createThrottle({
+  cooldownMs: parseInt(process.env.NOTIFIER_COOLDOWN_MS ?? String(2 * 60 * 60 * 1000), 10),
+  flightDedupTtlMs: parseInt(process.env.NOTIFIER_DEDUP_TTL_MS ?? String(6 * 60 * 60 * 1000), 10),
+});
 
 const notifierWorker = new NotifierWorker({
   telegram,
