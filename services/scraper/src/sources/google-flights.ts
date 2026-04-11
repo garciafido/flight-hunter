@@ -2,9 +2,13 @@ import type { FlightResult, SearchConfig, ProxyRegion, SearchLeg } from '@flight
 import type { FlightSource } from './base-source.js';
 
 function formatDate(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
+  // Use UTC components so the URL date matches the date we store via
+  // toISOString() (which is also UTC). Mixing local + UTC was causing
+  // off-by-one-day mismatches between what the user saw on Google Flights
+  // and the date the dashboard rendered.
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
 }
 
