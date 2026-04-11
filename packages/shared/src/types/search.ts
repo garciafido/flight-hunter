@@ -50,4 +50,22 @@ export interface SearchConfig {
   active: boolean;
   filters: SearchFilters;
   alertConfig: SearchAlertConfig;
+
+  // ----- Orthogonal features preserved from prior phases -----
+  // Multi-destination search: when 'flexible', the engine expands the
+  // destinationCandidates list and runs the full waypoint analysis once
+  // per candidate (treating each as a substitution for the last waypoint).
+  destinationMode?: 'single' | 'flexible';
+  destinationCandidates?: string[];
+
+  // Window mode: alternative date-window expression. When true, departureFrom/To
+  // is the outer window and windowDuration is the trip length to slide.
+  // Note: with waypoints the trip duration is mostly derived from stays,
+  // so windowMode is only useful when stays don't fully constrain it.
+  windowMode?: boolean;
+  windowDuration?: number;
+  windowFlexibility?: number;
+
+  // Cap on the number of combos the analyzer will evaluate per search tick.
+  maxCombos?: number;
 }
