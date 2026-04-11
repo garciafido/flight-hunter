@@ -40,6 +40,82 @@ export default function AlertsPage() {
 
   const [deleting, setDeleting] = useState(false);
   const [deleteMsg, setDeleteMsg] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  function formatDate(iso: string | undefined): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const isMidnightUtc = d.getUTCHours() === 0 && d.getUTCMinutes() === 0;
+    return isMidnightUtc
+      ? d.toLocaleDateString('es-CL', { timeZone: 'UTC' })
+      : d.toLocaleString('es-CL', { timeZone: 'UTC' });
+  }
+
+  function buildShareText(alert: any, searchName: string): string {
+    const combo = alert.comboInfo as { legs?: any[]; totalPrice?: number; plan?: any } | null;
+    const isCombo = !!(combo && Array.isArray(combo.legs) && combo.legs.length > 0);
+    const levelEmoji = alert.level === 'urgent' ? '🚨' : alert.level === 'good' ? '✅' : 'ℹ️';
+
+    if (isCombo) {
+      const currency = combo!.legs![0]?.currency ?? 'USD';
+      const totalPrice = combo!.totalPrice;
+      const lines: string[] = [];
+      lines.push(`${levelEmoji} *${searchName}*`);
+      if (combo!.plan) {
+        const positionLabel =
+          combo!.plan.position === 'start' ? 'al inicio' :
+          combo!.plan.position === 'end' ? 'al final' : '';
+        lines.push(`🏨 ${combo!.plan.days}d en ${combo!.plan.airport} ${positionLabel}`.trim());
+      }
+      lines.push(`💰 *${currency} ${totalPrice} / persona* (${combo!.legs!.length} tramos)`);
+      lines.push('');
+      combo!.legs!.forEach((leg: any, idx: number) => {
+        const dep = formatDate(leg.departureTime);
+        lines.push(`*${idx + 1}.* ${leg.departureAirport} → ${leg.arrivalAirport} — ${leg.airline}`);
+        if (dep) lines.push(`   📅 ${dep}`);
+        lines.push(`   💵 ${leg.currency} ${leg.price}`);
+        if (leg.bookingUrl) lines.push(`   🔗 ${leg.bookingUrl}`);
+        lines.push('');
+      });
+      return lines.join('\n').trimEnd();
+    }
+
+    // Single flight
+    const fr = alert.flightResult;
+    const lines: string[] = [];
+    lines.push(`${levelEmoji} *${searchName}*`);
+    lines.push(`✈️ ${fr?.outbound?.airline ?? ''} ${fr?.outbound?.departure?.airport ?? ''} → ${fr?.outbound?.arrival?.airport ?? ''}`);
+    lines.push(`💰 *${fr?.currency} ${Number(fr?.pricePerPerson ?? 0).toLocaleString()} / persona*`);
+    const dep = formatDate(fr?.outbound?.departure?.time);
+    const ret = formatDate(fr?.inbound?.departure?.time);
+    if (dep) lines.push(`📅 Ida: ${dep}`);
+    if (ret) lines.push(`📅 Vuelta: ${ret}`);
+    if (fr?.bookingUrl) {
+      lines.push('');
+      lines.push(`🔗 ${fr.bookingUrl}`);
+    }
+    return lines.join('\n');
+  }
+
+  async function handleCopyShare(alert: any) {
+    const searchName = searches.find((s: any) => s.id === alert.searchId)?.name ?? 'Vuelo';
+    const text = buildShareText(alert, searchName);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(alert.id);
+      setTimeout(() => setCopiedId((current) => (current === alert.id ? null : current)), 2000);
+    } catch {
+      // Fallback for browsers without clipboard API
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch {}
+      document.body.removeChild(ta);
+      setCopiedId(alert.id);
+      setTimeout(() => setCopiedId((current) => (current === alert.id ? null : current)), 2000);
+    }
+  }
 
   async function runDelete(filter: Parameters<typeof deleteAlerts>[0], confirmText?: string) {
     if (confirmText && !confirm(confirmText)) return;
@@ -214,6 +290,20 @@ export default function AlertsPage() {
                     👎
                   </button>
                 </div>
+                <button
+                  onClick={() => handleCopyShare(a)}
+                  title="Copiar texto para enviar por WhatsApp"
+                  style={{
+                    padding: '4px 10px', borderRadius: 4, fontSize: 12,
+                    cursor: 'pointer',
+                    border: `1px solid ${copiedId === a.id ? '#22c55e' : '#d1d5db'}`,
+                    background: copiedId === a.id ? '#dcfce7' : '#fff',
+                    color: copiedId === a.id ? '#166534' : '#374151',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {copiedId === a.id ? '✓ Copiado' : '📋 Compartir'}
+                </button>
                 {!isCombo && a.flightResult?.bookingUrl && (
                   <a href={a.flightResult.bookingUrl} target="_blank" rel="noopener noreferrer"
                     style={{ color: '#2563eb', fontSize: 13 }}>
