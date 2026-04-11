@@ -1,43 +1,63 @@
 import { describe, it, expect, vi } from 'vitest';
 import { SearchJobProcessor } from '../../src/jobs/search-job.js';
 import { QUEUE_NAMES } from '@flight-hunter/shared';
+import type { SearchConfig } from '@flight-hunter/shared';
+
+const makeE2eConfig = (overrides: Partial<SearchConfig> = {}): SearchConfig => ({
+  id: 'e2e-search',
+  name: 'E2E Search',
+  origin: 'AEP',
+  departureFrom: new Date('2026-07-24'),
+  departureTo: new Date('2026-07-31'),
+  passengers: 2,
+  waypoints: [{ airport: 'CUZ', gap: { type: 'stay', minDays: 7, maxDays: 14 } }],
+  maxConnectionHours: 24,
+  proxyRegions: ['CL', 'AR'],
+  scanIntervalMin: 60,
+  active: true,
+  filters: {
+    airlineBlacklist: [],
+    airlinePreferred: [],
+    airportPreferred: {},
+    airportBlacklist: {},
+    maxUnplannedStops: 1,
+    requireCarryOn: false,
+    maxTotalTravelTime: 1440,
+  },
+  alertConfig: { scoreThresholds: { info: 60, good: 75, urgent: 90 }, maxPricePerPerson: 600, currency: 'USD' },
+  ...overrides,
+});
+
+const makeE2eResult = () => ({
+  searchId: 'e2e-search',
+  source: 'google-flights' as const,
+  outbound: {
+    departure: { airport: 'AEP', time: '2026-07-24T10:00:00Z' },
+    arrival: { airport: 'CUZ', time: '2026-07-24T15:00:00Z' },
+    airline: 'LATAM',
+    flightNumber: 'LA1234',
+    durationMinutes: 300,
+    stops: 0,
+  },
+  inbound: null,
+  totalPrice: 350,
+  currency: 'USD',
+  pricePer: 'person' as const,
+  passengers: 2,
+  carryOnIncluded: true,
+  bookingUrl: 'https://example.com',
+  scrapedAt: new Date(),
+  proxyRegion: 'CL' as const,
+});
 
 describe('Scraper E2E Flow', () => {
   it('processes a search config through sources and publishes to queue', async () => {
     const publishedResults: any[] = [];
 
+    // source with searchOneWay — returns 1 result per call
     const mockSource = {
       name: 'mock-source',
-      search: vi.fn().mockResolvedValue([
-        {
-          searchId: 'e2e-search',
-          source: 'kiwi' as const,
-          outbound: {
-            departure: { airport: 'AEP', time: '2026-07-24T10:00:00Z' },
-            arrival: { airport: 'CUZ', time: '2026-07-24T15:00:00Z' },
-            airline: 'LATAM',
-            flightNumber: 'LA1234',
-            durationMinutes: 300,
-            stops: 0,
-          },
-          inbound: {
-            departure: { airport: 'CUZ', time: '2026-08-08T10:00:00Z' },
-            arrival: { airport: 'AEP', time: '2026-08-08T20:00:00Z' },
-            airline: 'LATAM',
-            flightNumber: 'LA5678',
-            durationMinutes: 600,
-            stops: 1,
-          },
-          totalPrice: 350,
-          currency: 'USD',
-          pricePer: 'person' as const,
-          passengers: 2,
-          carryOnIncluded: true,
-          bookingUrl: 'https://example.com',
-          scrapedAt: new Date(),
-          proxyRegion: 'CL' as const,
-        },
-      ]),
+      searchOneWay: vi.fn().mockResolvedValue([makeE2eResult()]),
     };
 
     const mockVpnRouter = { getProxyUrl: vi.fn().mockResolvedValue(null) };
@@ -54,65 +74,31 @@ describe('Scraper E2E Flow', () => {
       mockQueue as any,
     );
 
-    const config = {
-      id: 'e2e-search',
-      proxyRegions: ['CL', 'AR'],
-      alertConfig: { scoreThresholds: { info: 60, good: 75, urgent: 90 }, maxPricePerPerson: 600, currency: 'USD' },
-    } as any;
+    // 1-waypoint [CUZ] → 2 unique pairs × 2 regions = 4 searchOneWay calls → 4 results
+    await processor.execute(makeE2eConfig({ proxyRegions: ['CL', 'AR'] }));
 
-    await processor.execute(config);
-
-    // 1 source * 2 regions = 2 results
-    expect(publishedResults.length).toBe(2);
+    expect(publishedResults.length).toBe(4); // 2 pairs × 2 regions
     expect(publishedResults[0].searchId).toBe('e2e-search');
-    expect(publishedResults[0].source).toBe('kiwi');
-    expect(mockSource.search).toHaveBeenCalledTimes(2);
+    expect(mockSource.searchOneWay).toHaveBeenCalledTimes(4);
     expect(mockVpnRouter.getProxyUrl).toHaveBeenCalledWith('CL');
     expect(mockVpnRouter.getProxyUrl).toHaveBeenCalledWith('AR');
 
-    // Verify queue was called with the correct queue name (retry options are now included)
+    // Verify queue was called with the correct queue name
     expect(mockQueue.add).toHaveBeenCalledWith(QUEUE_NAMES.RAW_RESULTS, expect.any(Object), expect.any(Object));
   });
 
-  it('continues when a source fails for one region', async () => {
+  it('continues when a source fails (no searchOneWay) and another succeeds', async () => {
     const publishedResults: any[] = [];
 
+    // failSource has no searchOneWay → filtered out
     const failSource = {
       name: 'fail-source',
       search: vi.fn().mockRejectedValue(new Error('API down')),
     };
+    // goodSource has searchOneWay → used
     const goodSource = {
       name: 'good-source',
-      search: vi.fn().mockResolvedValue([
-        {
-          searchId: 'e2e-search',
-          source: 'skyscanner' as const,
-          outbound: {
-            departure: { airport: 'AEP', time: '2026-07-24T10:00:00Z' },
-            arrival: { airport: 'CUZ', time: '2026-07-24T15:00:00Z' },
-            airline: 'LATAM',
-            flightNumber: 'LA1',
-            durationMinutes: 300,
-            stops: 0,
-          },
-          inbound: {
-            departure: { airport: 'CUZ', time: '2026-08-08T10:00:00Z' },
-            arrival: { airport: 'AEP', time: '2026-08-08T20:00:00Z' },
-            airline: 'LATAM',
-            flightNumber: 'LA2',
-            durationMinutes: 600,
-            stops: 1,
-          },
-          totalPrice: 400,
-          currency: 'USD',
-          pricePer: 'person' as const,
-          passengers: 2,
-          carryOnIncluded: true,
-          bookingUrl: 'https://example.com',
-          scrapedAt: new Date(),
-          proxyRegion: 'CL' as const,
-        },
-      ]),
+      searchOneWay: vi.fn().mockResolvedValue([makeE2eResult()]),
     };
 
     const mockVpnRouter = { getProxyUrl: vi.fn().mockResolvedValue(null) };
@@ -129,11 +115,13 @@ describe('Scraper E2E Flow', () => {
       mockQueue as any,
     );
 
-    await processor.execute({ id: 'e2e-search', proxyRegions: ['CL'] } as any);
+    // 1-waypoint [CUZ] → 2 pairs × 1 region = 2 calls on goodSource
+    await processor.execute(makeE2eConfig({ proxyRegions: ['CL'] }));
 
-    expect(publishedResults.length).toBe(1);
-    expect(goodSource.search).toHaveBeenCalled();
-    expect(failSource.search).toHaveBeenCalled();
+    expect(publishedResults.length).toBe(2);
+    expect(goodSource.searchOneWay).toHaveBeenCalled();
+    // failSource has no searchOneWay so its search is never called
+    expect(failSource.search).not.toHaveBeenCalled();
   });
 
   it('uses default region when proxyRegions is empty', async () => {
@@ -141,36 +129,7 @@ describe('Scraper E2E Flow', () => {
 
     const mockSource = {
       name: 'mock-source',
-      search: vi.fn().mockResolvedValue([
-        {
-          searchId: 'e2e-search',
-          source: 'kiwi' as const,
-          outbound: {
-            departure: { airport: 'AEP', time: '2026-07-24T10:00:00Z' },
-            arrival: { airport: 'CUZ', time: '2026-07-24T15:00:00Z' },
-            airline: 'LATAM',
-            flightNumber: 'LA1234',
-            durationMinutes: 300,
-            stops: 0,
-          },
-          inbound: {
-            departure: { airport: 'CUZ', time: '2026-08-08T10:00:00Z' },
-            arrival: { airport: 'AEP', time: '2026-08-08T20:00:00Z' },
-            airline: 'LATAM',
-            flightNumber: 'LA5678',
-            durationMinutes: 600,
-            stops: 1,
-          },
-          totalPrice: 350,
-          currency: 'USD',
-          pricePer: 'person' as const,
-          passengers: 2,
-          carryOnIncluded: true,
-          bookingUrl: 'https://example.com',
-          scrapedAt: new Date(),
-          proxyRegion: 'CL' as const,
-        },
-      ]),
+      searchOneWay: vi.fn().mockResolvedValue([makeE2eResult()]),
     };
 
     const mockVpnRouter = { getProxyUrl: vi.fn().mockResolvedValue(null) };
@@ -187,10 +146,10 @@ describe('Scraper E2E Flow', () => {
       mockQueue as any,
     );
 
-    await processor.execute({ id: 'e2e-search', proxyRegions: [] } as any);
+    // 1-waypoint [CUZ], empty proxyRegions → ['default'] → 2 pairs × 1 region = 2 results
+    await processor.execute(makeE2eConfig({ proxyRegions: [] }));
 
-    // Falls back to ['default'] → 1 region * 1 source = 1 result
-    expect(publishedResults.length).toBe(1);
+    expect(publishedResults.length).toBe(2); // 2 pairs × 1 default region
     expect(mockVpnRouter.getProxyUrl).toHaveBeenCalledWith('default');
   });
 });

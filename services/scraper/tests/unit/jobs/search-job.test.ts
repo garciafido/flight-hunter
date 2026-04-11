@@ -1,18 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SearchJobProcessor } from '../../../src/jobs/search-job.js';
-import type { SearchConfig, FlightResult, SearchLeg } from '@flight-hunter/shared';
+import type { SearchConfig, FlightResult, Waypoint } from '@flight-hunter/shared';
 import { QUEUE_NAMES } from '@flight-hunter/shared';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const makeStayWaypoint = (airport: string, minDays = 3, maxDays = 7): Waypoint => ({
+  airport,
+  gap: { type: 'stay', minDays, maxDays },
+});
 
 const makeConfig = (overrides: Partial<SearchConfig> = {}): SearchConfig => ({
   id: 'search-1',
   name: 'Test',
   origin: 'SCL',
-  destination: 'MAD',
-  departureFrom: new Date('2025-07-01'),
-  departureTo: new Date('2025-07-15'),
-  returnMinDays: 7,
-  returnMaxDays: 14,
+  departureFrom: new Date('2026-07-01'),
+  departureTo: new Date('2026-07-15'),
   passengers: 2,
+  waypoints: [makeStayWaypoint('MAD')],
+  maxConnectionHours: 24,
   proxyRegions: ['CL', 'AR'],
   scanIntervalMin: 60,
   active: true,
@@ -22,8 +30,6 @@ const makeConfig = (overrides: Partial<SearchConfig> = {}): SearchConfig => ({
     airportPreferred: {},
     airportBlacklist: {},
     maxUnplannedStops: 1,
-    minConnectionTime: 60,
-    maxConnectionTime: 240,
     requireCarryOn: false,
     maxTotalTravelTime: 1440,
   },
@@ -37,554 +43,483 @@ const makeConfig = (overrides: Partial<SearchConfig> = {}): SearchConfig => ({
 
 const makeFlightResult = (overrides: Partial<FlightResult> = {}): FlightResult => ({
   searchId: 'search-1',
-  source: 'kiwi',
+  source: 'google-flights',
   outbound: {
-    departure: { airport: 'SCL', time: '2025-07-01T10:00:00' },
-    arrival: { airport: 'MAD', time: '2025-07-01T22:00:00' },
+    departure: { airport: 'SCL', time: '2026-07-01T10:00:00' },
+    arrival: { airport: 'MAD', time: '2026-07-01T22:00:00' },
     airline: 'LA',
     flightNumber: 'LA701',
     durationMinutes: 720,
     stops: 0,
   },
-  inbound: {
-    departure: { airport: 'MAD', time: '2025-07-15T08:00:00' },
-    arrival: { airport: 'SCL', time: '2025-07-15T22:00:00' },
-    airline: 'LA',
-    flightNumber: 'LA702',
-    durationMinutes: 840,
-    stops: 0,
-  },
+  inbound: null,
   totalPrice: 1200,
   currency: 'USD',
   pricePer: 'total',
   passengers: 2,
   carryOnIncluded: true,
-  bookingUrl: 'https://kiwi.com/booking',
+  bookingUrl: 'https://google.com/flights',
   scrapedAt: new Date(),
   proxyRegion: 'CL',
   ...overrides,
 });
 
-describe('SearchJobProcessor', () => {
-  let source1: { name: string; search: ReturnType<typeof vi.fn> };
-  let source2: { name: string; search: ReturnType<typeof vi.fn> };
+// ---------------------------------------------------------------------------
+// SearchJobProcessor waypoint dispatch
+// ---------------------------------------------------------------------------
+
+describe('SearchJobProcessor waypoint dispatch', () => {
+  let oneWaySource: { name: string; searchOneWay: ReturnType<typeof vi.fn> };
   let vpnRouter: { getProxyUrl: ReturnType<typeof vi.fn> };
   let queue: { add: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
-    source1 = { name: 'kiwi', search: vi.fn() };
-    source2 = { name: 'skyscanner', search: vi.fn() };
+    oneWaySource = { name: 'google-flights', searchOneWay: vi.fn().mockResolvedValue([]) };
     vpnRouter = { getProxyUrl: vi.fn().mockResolvedValue(null) };
     queue = { add: vi.fn().mockResolvedValue(undefined) };
   });
 
-  it('calls search on each source for each region', async () => {
-    source1.search.mockResolvedValue([]);
-    source2.search.mockResolvedValue([]);
-
+  it('calls searchOneWay for each unique pair from a 1-waypoint search (2 pairs)', async () => {
+    // origin=SCL, waypoints=[MAD] → SCL→MAD, MAD→SCL = 2 unique pairs
     const processor = new SearchJobProcessor(
-      [source1 as never, source2 as never],
+      [oneWaySource as never],
       vpnRouter as never,
       queue as never,
     );
 
-    const config = makeConfig({ proxyRegions: ['CL', 'AR'] });
+    const config = makeConfig({ origin: 'SCL', waypoints: [makeStayWaypoint('MAD')], proxyRegions: ['CL'] });
     await processor.execute(config);
 
-    expect(source1.search).toHaveBeenCalledTimes(2); // once per region
-    expect(source2.search).toHaveBeenCalledTimes(2);
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(2);
+    const calledPairs = vi.mocked(oneWaySource.searchOneWay).mock.calls.map((c: any) => ({
+      origin: c[2].origin,
+      destination: c[2].destination,
+    }));
+    expect(calledPairs).toContainEqual({ origin: 'SCL', destination: 'MAD' });
+    expect(calledPairs).toContainEqual({ origin: 'MAD', destination: 'SCL' });
   });
 
-  it('gets proxy URL for each region', async () => {
-    source1.search.mockResolvedValue([]);
-
+  it('dedupes pairs across permutations for a 2-waypoint search (6 unique pairs)', async () => {
+    // origin=BUE, waypoints=[LIM, CUZ] → 2 perms → 6 unique pairs
     const processor = new SearchJobProcessor(
-      [source1 as never],
+      [oneWaySource as never],
       vpnRouter as never,
       queue as never,
     );
 
-    await processor.execute(makeConfig({ proxyRegions: ['CL', 'AR'] }));
+    const config = makeConfig({
+      origin: 'BUE',
+      waypoints: [makeStayWaypoint('LIM'), makeStayWaypoint('CUZ')],
+      proxyRegions: ['AR'],
+    });
+    await processor.execute(config);
 
+    // 6 unique pairs × 1 region × 1 source = 6 calls
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(6);
+    const calledPairs = vi.mocked(oneWaySource.searchOneWay).mock.calls.map((c: any) => ({
+      origin: c[2].origin,
+      destination: c[2].destination,
+    }));
+    // All 6 unique pairs from the 2 permutations
+    expect(calledPairs).toContainEqual({ origin: 'BUE', destination: 'LIM' });
+    expect(calledPairs).toContainEqual({ origin: 'LIM', destination: 'CUZ' });
+    expect(calledPairs).toContainEqual({ origin: 'CUZ', destination: 'BUE' });
+    expect(calledPairs).toContainEqual({ origin: 'BUE', destination: 'CUZ' });
+    expect(calledPairs).toContainEqual({ origin: 'CUZ', destination: 'LIM' });
+    expect(calledPairs).toContainEqual({ origin: 'LIM', destination: 'BUE' });
+  });
+
+  it('iterates over all proxy regions', async () => {
+    const processor = new SearchJobProcessor(
+      [oneWaySource as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    // 2 pairs × 2 regions = 4 calls
+    const config = makeConfig({ origin: 'SCL', waypoints: [makeStayWaypoint('MAD')], proxyRegions: ['CL', 'AR'] });
+    await processor.execute(config);
+
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(4);
     expect(vpnRouter.getProxyUrl).toHaveBeenCalledWith('CL');
     expect(vpnRouter.getProxyUrl).toHaveBeenCalledWith('AR');
   });
 
-  it('publishes each result to the raw results queue', async () => {
-    const result1 = makeFlightResult({ source: 'kiwi' });
-    const result2 = makeFlightResult({ source: 'skyscanner' });
-    source1.search.mockResolvedValue([result1]);
-    source2.search.mockResolvedValue([result2]);
-
+  it('uses default region when proxyRegions is empty', async () => {
     const processor = new SearchJobProcessor(
-      [source1 as never, source2 as never],
+      [oneWaySource as never],
       vpnRouter as never,
       queue as never,
     );
 
-    await processor.execute(makeConfig({ proxyRegions: ['CL'] }));
+    const config = makeConfig({ proxyRegions: [] });
+    await processor.execute(config);
 
-    expect(queue.add).toHaveBeenCalledTimes(2);
+    expect(vpnRouter.getProxyUrl).toHaveBeenCalledWith('default');
+  });
+
+  it('publishes each result to the raw results queue', async () => {
+    const result1 = makeFlightResult({ source: 'google-flights' });
+    const result2 = makeFlightResult({ source: 'google-flights' });
+    oneWaySource.searchOneWay
+      .mockResolvedValueOnce([result1])
+      .mockResolvedValueOnce([result2])
+      .mockResolvedValue([]);
+
+    const processor = new SearchJobProcessor(
+      [oneWaySource as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    const config = makeConfig({ proxyRegions: ['CL'] });
+    await processor.execute(config);
+
     expect(queue.add).toHaveBeenCalledWith(QUEUE_NAMES.RAW_RESULTS, result1, expect.any(Object));
     expect(queue.add).toHaveBeenCalledWith(QUEUE_NAMES.RAW_RESULTS, result2, expect.any(Object));
   });
 
-  it('continues with other sources if one throws', async () => {
-    source1.search.mockRejectedValue(new Error('source1 error'));
-    source2.search.mockResolvedValue([makeFlightResult({ source: 'skyscanner' })]);
+  it('skips sources without searchOneWay', async () => {
+    const plainSource = { name: 'kiwi', search: vi.fn().mockResolvedValue([]) };
 
     const processor = new SearchJobProcessor(
-      [source1 as never, source2 as never],
+      [plainSource as never],
       vpnRouter as never,
       queue as never,
     );
 
-    await processor.execute(makeConfig({ proxyRegions: ['CL'] }));
+    const config = makeConfig({ proxyRegions: ['CL'] });
+    await processor.execute(config);
 
-    // source2 still called and its results published
+    // plain source has no searchOneWay, so search is never called either
+    expect(plainSource.search).not.toHaveBeenCalled();
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('continues with other pairs if resilience layer marks one as skipped', async () => {
+    // Simulate the resilience layer returning skipped=true for the first call
+    const { PassthroughResilienceLayer } = await import(
+      '../../../src/resilience/resilience-layer.js'
+    );
+    let callCount = 0;
+    const mockResilience = {
+      callSource: vi.fn(async (_name: string, _open: boolean, fn: () => Promise<any>) => {
+        callCount++;
+        if (callCount === 1) return { result: undefined, skipped: true };
+        return { result: await fn(), skipped: false };
+      }),
+    };
+
+    const processor = new SearchJobProcessor(
+      [oneWaySource as never],
+      vpnRouter as never,
+      queue as never,
+      mockResilience as never,
+    );
+
+    oneWaySource.searchOneWay.mockResolvedValue([makeFlightResult()]);
+    const config = makeConfig({ origin: 'SCL', waypoints: [makeStayWaypoint('MAD')], proxyRegions: ['CL'] });
+    await processor.execute(config);
+
+    // First pair skipped, second pair published → 1 result
     expect(queue.add).toHaveBeenCalledTimes(1);
   });
 
-  it('passes proxy URL to each source', async () => {
-    vpnRouter.getProxyUrl.mockResolvedValue('socks5://proxy:1080');
-    source1.search.mockResolvedValue([]);
-
-    const processor = new SearchJobProcessor(
-      [source1 as never],
-      vpnRouter as never,
-      queue as never,
-    );
-
-    await processor.execute(makeConfig({ proxyRegions: ['CL'] }));
-
-    expect(source1.search).toHaveBeenCalledWith(
-      expect.anything(),
-      'socks5://proxy:1080',
-    );
-  });
-
-  it('uses default region when proxyRegions is empty', async () => {
-    source1.search.mockResolvedValue([]);
-
-    const processor = new SearchJobProcessor(
-      [source1 as never],
-      vpnRouter as never,
-      queue as never,
-    );
-
-    await processor.execute(makeConfig({ proxyRegions: [] }));
-
-    expect(vpnRouter.getProxyUrl).toHaveBeenCalledWith('default');
-    expect(source1.search).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('SearchJobProcessor split mode', () => {
-  let oneWaySource: { name: string; search: ReturnType<typeof vi.fn>; searchOneWay: ReturnType<typeof vi.fn> };
-  let vpnRouter: { getProxyUrl: ReturnType<typeof vi.fn> };
-  let queue: { add: ReturnType<typeof vi.fn> };
-
-  const makeSplitConfig = (overrides: Partial<SearchConfig> = {}): SearchConfig => ({
-    id: 'split-1',
-    name: 'Split Test',
-    origin: 'BUE',
-    destination: 'CUZ',
-    departureFrom: new Date('2026-07-25'),
-    departureTo: new Date('2026-07-31'),
-    returnMinDays: 7,
-    returnMaxDays: 14,
-    passengers: 1,
-    proxyRegions: ['AR'],
-    scanIntervalMin: 60,
-    active: true,
-    mode: 'split',
-    legs: [
-      {
-        origin: 'BUE',
-        destination: 'CUZ',
-        departureFrom: new Date('2026-07-25'),
-        departureTo: new Date('2026-07-31'),
-      },
-      {
-        origin: 'CUZ',
-        destination: 'BUE',
-        departureFrom: new Date('2026-08-09'),
-        departureTo: new Date('2026-08-30'),
-        stopover: { airport: 'LIM', minDays: 3, maxDays: 4 },
-      },
-    ],
-    filters: {
-      airlineBlacklist: [],
-      airlinePreferred: [],
-      airportPreferred: {},
-      airportBlacklist: {},
-      maxUnplannedStops: 2,
-      minConnectionTime: 60,
-      maxConnectionTime: 480,
-      requireCarryOn: false,
-      maxTotalTravelTime: 2880,
-    },
-    alertConfig: {
-      scoreThresholds: { info: 50, good: 70, urgent: 85 },
-      maxPricePerPerson: 1500,
-      currency: 'USD',
-    },
-    ...overrides,
-  });
-
-  beforeEach(() => {
-    oneWaySource = { name: 'google-flights', search: vi.fn(), searchOneWay: vi.fn() };
-    vpnRouter = { getProxyUrl: vi.fn().mockResolvedValue(null) };
-    queue = { add: vi.fn().mockResolvedValue(undefined) };
-  });
-
-  it('calls searchOneWay for each leg when mode is split', async () => {
-    oneWaySource.searchOneWay.mockResolvedValue([]);
-
+  it('skips and warns when there are no waypoints', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const processor = new SearchJobProcessor(
       [oneWaySource as never],
       vpnRouter as never,
       queue as never,
     );
 
-    await processor.execute(makeSplitConfig());
+    const config = makeConfig({ waypoints: [] });
+    await processor.execute(config);
 
-    // 2 legs × 1 region = 2 calls
-    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(2);
-    expect(oneWaySource.search).not.toHaveBeenCalled();
+    expect(oneWaySource.searchOneWay).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no waypoints'));
+    warnSpy.mockRestore();
   });
 
-  it('passes correct legIndex to searchOneWay', async () => {
-    oneWaySource.searchOneWay.mockResolvedValue([]);
-
+  it('passes legIndex=0 to searchOneWay for all pairs', async () => {
     const processor = new SearchJobProcessor(
       [oneWaySource as never],
       vpnRouter as never,
       queue as never,
     );
 
-    await processor.execute(makeSplitConfig());
+    const config = makeConfig({ origin: 'SCL', waypoints: [makeStayWaypoint('MAD')], proxyRegions: ['CL'] });
+    await processor.execute(config);
 
     const calls = vi.mocked(oneWaySource.searchOneWay).mock.calls;
-    expect(calls[0][1]).toBe(0); // legIndex 0
-    expect(calls[1][1]).toBe(1); // legIndex 1
-  });
-
-  it('publishes results with legIndex from split mode', async () => {
-    const leg0Result = makeFlightResult({ source: 'google-flights', searchId: 'split-1' });
-    const leg1Result = makeFlightResult({ source: 'google-flights', searchId: 'split-1' });
-    oneWaySource.searchOneWay
-      .mockResolvedValueOnce([leg0Result])
-      .mockResolvedValueOnce([leg1Result]);
-
-    const processor = new SearchJobProcessor(
-      [oneWaySource as never],
-      vpnRouter as never,
-      queue as never,
-    );
-
-    await processor.execute(makeSplitConfig());
-
-    expect(queue.add).toHaveBeenCalledTimes(2);
-  });
-
-  it('does not call searchOneWay on sources without the method', async () => {
-    const plainSource = { name: 'kiwi', search: vi.fn().mockResolvedValue([]) };
-
-    const processor = new SearchJobProcessor(
-      [plainSource as never],
-      vpnRouter as never,
-      queue as never,
-    );
-
-    await processor.execute(makeSplitConfig());
-
-    expect(plainSource.search).not.toHaveBeenCalled();
-  });
-
-  it('falls back to roundtrip behavior when mode is roundtrip', async () => {
-    oneWaySource.search.mockResolvedValue([]);
-
-    const processor = new SearchJobProcessor(
-      [oneWaySource as never],
-      vpnRouter as never,
-      queue as never,
-    );
-
-    const roundtripConfig = makeSplitConfig({ mode: 'roundtrip' });
-    await processor.execute(roundtripConfig);
-
-    expect(oneWaySource.search).toHaveBeenCalledOnce();
-    expect(oneWaySource.searchOneWay).not.toHaveBeenCalled();
-  });
-
-  it('falls back to roundtrip when mode is undefined', async () => {
-    const plainSource = { name: 'kiwi', search: vi.fn().mockResolvedValue([]) };
-
-    const processor = new SearchJobProcessor(
-      [plainSource as never],
-      vpnRouter as never,
-      queue as never,
-    );
-
-    const noModeConfig = makeSplitConfig({ mode: undefined });
-    await processor.execute(noModeConfig);
-
-    expect(plainSource.search).toHaveBeenCalledOnce();
-  });
-
-  it('continues to next leg if one leg fails', async () => {
-    oneWaySource.searchOneWay
-      .mockRejectedValueOnce(new Error('leg 0 failed'))
-      .mockResolvedValueOnce([makeFlightResult({ source: 'google-flights', searchId: 'split-1' })]);
-
-    const processor = new SearchJobProcessor(
-      [oneWaySource as never],
-      vpnRouter as never,
-      queue as never,
-    );
-
-    await processor.execute(makeSplitConfig());
-
-    // leg 1 still published
-    expect(queue.add).toHaveBeenCalledTimes(1);
+    for (const call of calls) {
+      expect(call[1]).toBe(0);
+    }
   });
 });
 
+// ---------------------------------------------------------------------------
+// SearchJobProcessor flexible destination mode
+// ---------------------------------------------------------------------------
+
 describe('SearchJobProcessor flexible destination mode', () => {
-  let source: { name: string; search: ReturnType<typeof vi.fn> };
+  let oneWaySource: { name: string; searchOneWay: ReturnType<typeof vi.fn> };
   let vpnRouter: { getProxyUrl: ReturnType<typeof vi.fn> };
   let queue: { add: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
-    source = { name: 'kiwi', search: vi.fn().mockResolvedValue([]) };
+    oneWaySource = { name: 'google-flights', searchOneWay: vi.fn().mockResolvedValue([]) };
     vpnRouter = { getProxyUrl: vi.fn().mockResolvedValue(null) };
     queue = { add: vi.fn().mockResolvedValue(undefined) };
   });
 
-  const makeFlexibleConfig = (candidates: string[]): SearchConfig => ({
-    id: 'flex-1',
-    name: 'Flexible Test',
-    origin: 'SCL',
-    destination: 'MAD', // will be overridden per candidate
-    departureFrom: new Date('2026-07-01'),
-    departureTo: new Date('2026-07-15'),
-    returnMinDays: 7,
-    returnMaxDays: 14,
-    passengers: 1,
-    proxyRegions: ['CL'],
-    scanIntervalMin: 60,
-    active: true,
-    destinationMode: 'flexible',
-    destinationCandidates: candidates,
-    filters: {
-      airlineBlacklist: [],
-      airlinePreferred: [],
-      airportPreferred: {},
-      airportBlacklist: {},
-      maxUnplannedStops: 1,
-      minConnectionTime: 60,
-      maxConnectionTime: 240,
-      requireCarryOn: false,
-      maxTotalTravelTime: 1440,
-    },
-    alertConfig: {
-      scoreThresholds: { info: 60, good: 75, urgent: 90 },
-      maxPricePerPerson: 2000,
-      currency: 'USD',
-    },
+  const makeFlexibleConfig = (candidates: string[], waypoints?: Waypoint[]): SearchConfig => ({
+    ...makeConfig({
+      origin: 'SCL',
+      waypoints: waypoints ?? [makeStayWaypoint('LIM'), makeStayWaypoint('CUZ')],
+      proxyRegions: ['CL'],
+      destinationMode: 'flexible',
+      destinationCandidates: candidates,
+    }),
   });
 
-  it('calls search once per expanded destination', async () => {
+  it('substitutes last waypoint for each candidate and calls searchOneWay', async () => {
+    // config: origin=SCL, waypoints=[LIM, CUZ], candidates=[BOG, UIO]
+    // Sub-search 1: waypoints=[LIM, BOG] → 6 unique pairs
+    // Sub-search 2: waypoints=[LIM, UIO] → 6 unique pairs
+    // total: 12 searchOneWay calls (6 per candidate × 1 region)
     const processor = new SearchJobProcessor(
-      [source as never],
+      [oneWaySource as never],
       vpnRouter as never,
       queue as never,
     );
 
-    await processor.execute(makeFlexibleConfig(['CUZ', 'LIM', 'BOG']));
-    // 3 destinations × 1 region = 3 calls
-    expect(source.search).toHaveBeenCalledTimes(3);
+    await processor.execute(makeFlexibleConfig(['BOG', 'UIO']));
+
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(12);
+  });
+
+  it('uses the correct airport in the last waypoint for each sub-search', async () => {
+    // 1 waypoint [CUZ], candidates=[BOG, UIO]
+    // Sub-search 1: waypoints=[BOG] → pairs: SCL→BOG, BOG→SCL
+    // Sub-search 2: waypoints=[UIO] → pairs: SCL→UIO, UIO→SCL
+    const processor = new SearchJobProcessor(
+      [oneWaySource as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    const config = makeFlexibleConfig(['BOG', 'UIO'], [makeStayWaypoint('CUZ')]);
+    await processor.execute(config);
+
+    const calledPairs = vi.mocked(oneWaySource.searchOneWay).mock.calls.map((c: any) => ({
+      origin: c[2].origin,
+      destination: c[2].destination,
+    }));
+    expect(calledPairs).toContainEqual({ origin: 'SCL', destination: 'BOG' });
+    expect(calledPairs).toContainEqual({ origin: 'BOG', destination: 'SCL' });
+    expect(calledPairs).toContainEqual({ origin: 'SCL', destination: 'UIO' });
+    expect(calledPairs).toContainEqual({ origin: 'UIO', destination: 'SCL' });
+    // Original CUZ should not appear
+    expect(calledPairs).not.toContainEqual(expect.objectContaining({ destination: 'CUZ' }));
   });
 
   it('expands region preset to individual airports', async () => {
+    // 'oceania' expands to SYD, MEL, AKL (3 airports)
+    // each gets a 1-waypoint sub-search (2 pairs per) → 6 total
     const processor = new SearchJobProcessor(
-      [source as never],
+      [oneWaySource as never],
       vpnRouter as never,
       queue as never,
     );
 
-    // oceania has 3 airports: SYD, MEL, AKL
-    await processor.execute(makeFlexibleConfig(['oceania']));
-    expect(source.search).toHaveBeenCalledTimes(3);
+    const config = makeFlexibleConfig(['oceania'], [makeStayWaypoint('CUZ')]);
+    await processor.execute(config);
+
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(6); // 3 airports × 2 pairs
   });
 
-  it('passes the destination airport as config.destination to each search', async () => {
+  it('falls through to plain executeWaypoints when destinationMode is single', async () => {
     const processor = new SearchJobProcessor(
-      [source as never],
+      [oneWaySource as never],
       vpnRouter as never,
       queue as never,
     );
 
-    await processor.execute(makeFlexibleConfig(['CUZ', 'LIM']));
-    const calls = vi.mocked(source.search).mock.calls;
-    const destinations = calls.map((c: any) => c[0].destination);
-    expect(destinations).toContain('CUZ');
-    expect(destinations).toContain('LIM');
-  });
-
-  it('falls through to normal execute when destinationMode is single', async () => {
-    const processor = new SearchJobProcessor(
-      [source as never],
-      vpnRouter as never,
-      queue as never,
-    );
-
-    await processor.execute(makeFlexibleConfig(['CUZ']).concat ? {
-      ...makeFlexibleConfig(['CUZ']),
+    const config: SearchConfig = {
+      ...makeFlexibleConfig(['BOG', 'UIO']),
       destinationMode: 'single',
-    } : makeFlexibleConfig(['CUZ']));
+    };
+    await processor.execute(config);
 
-    // When single mode, called once for regular roundtrip
-    // (flexible candidates ignored)
+    // Single mode: 1-waypoint [CUZ] (last waypoint NOT substituted)
+    // → SCL→CUZ, CUZ→SCL = 2 pairs, but config has 2 waypoints [LIM, CUZ]
+    // so 6 unique pairs from 2 permutations
+    // destinationCandidates are ignored
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(6);
   });
 
-  it('falls through to normal execute when destinationCandidates is empty', async () => {
+  it('falls through to plain executeWaypoints when destinationCandidates is empty', async () => {
     const processor = new SearchJobProcessor(
-      [source as never],
+      [oneWaySource as never],
       vpnRouter as never,
       queue as never,
     );
 
     const config: SearchConfig = {
       ...makeFlexibleConfig([]),
+      destinationMode: 'flexible',
+      destinationCandidates: [],
     };
     await processor.execute(config);
-    // Empty candidates → fall through to roundtrip (called once)
-    expect(source.search).toHaveBeenCalledTimes(1);
-  });
-});
 
-describe('SearchJobProcessor window mode', () => {
-  let source: { name: string; search: ReturnType<typeof vi.fn> };
-  let vpnRouter: { getProxyUrl: ReturnType<typeof vi.fn> };
-  let queue: { add: ReturnType<typeof vi.fn> };
-
-  beforeEach(() => {
-    source = { name: 'kiwi', search: vi.fn().mockResolvedValue([]) };
-    vpnRouter = { getProxyUrl: vi.fn().mockResolvedValue(null) };
-    queue = { add: vi.fn().mockResolvedValue(undefined) };
+    // Empty candidates → falls through to executeWaypoints with [LIM, CUZ]
+    // → 6 unique pairs
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(6);
   });
 
-  const makeWindowConfig = (rangeStart: string, rangeEnd: string, duration: number, flexibility = 0): SearchConfig => ({
-    id: 'window-1',
-    name: 'Window Test',
-    origin: 'SCL',
-    destination: 'MAD',
-    departureFrom: new Date(rangeStart),
-    departureTo: new Date(rangeEnd),
-    returnMinDays: duration,
-    returnMaxDays: duration,
-    passengers: 1,
-    proxyRegions: ['CL'],
-    scanIntervalMin: 60,
-    active: true,
-    windowMode: true,
-    windowDuration: duration,
-    windowFlexibility: flexibility,
-    filters: {
-      airlineBlacklist: [],
-      airlinePreferred: [],
-      airportPreferred: {},
-      airportBlacklist: {},
-      maxUnplannedStops: 1,
-      minConnectionTime: 60,
-      maxConnectionTime: 240,
-      requireCarryOn: false,
-      maxTotalTravelTime: 1440,
-    },
-    alertConfig: {
-      scoreThresholds: { info: 60, good: 75, urgent: 90 },
-      maxPricePerPerson: 2000,
-      currency: 'USD',
-    },
-  });
-
-  it('calls search for each day in the range (3-day range → 3 windows)', async () => {
+  it('skips and warns when flexible config has no waypoints', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const processor = new SearchJobProcessor(
-      [source as never],
-      vpnRouter as never,
-      queue as never,
-    );
-
-    await processor.execute(makeWindowConfig('2026-07-01', '2026-07-03', 14));
-    // 3 days in range (Jul 1, 2, 3) → 3 calls
-    expect(source.search).toHaveBeenCalledTimes(3);
-  });
-
-  it('caps at 30 windows max', async () => {
-    const processor = new SearchJobProcessor(
-      [source as never],
-      vpnRouter as never,
-      queue as never,
-    );
-
-    // 90-day range → should cap at 30
-    await processor.execute(makeWindowConfig('2026-07-01', '2026-09-29', 14));
-    expect(source.search).toHaveBeenCalledTimes(30);
-  });
-
-  it('passes correct returnMinDays/returnMaxDays with flexibility', async () => {
-    const processor = new SearchJobProcessor(
-      [source as never],
-      vpnRouter as never,
-      queue as never,
-    );
-
-    await processor.execute(makeWindowConfig('2026-07-01', '2026-07-01', 14, 2));
-    const config = vi.mocked(source.search).mock.calls[0][0] as SearchConfig;
-    expect(config.returnMinDays).toBe(12); // 14 - 2
-    expect(config.returnMaxDays).toBe(16); // 14 + 2
-  });
-
-  it('passes departure date as the exact window start', async () => {
-    const processor = new SearchJobProcessor(
-      [source as never],
-      vpnRouter as never,
-      queue as never,
-    );
-
-    await processor.execute(makeWindowConfig('2026-07-05', '2026-07-05', 14));
-    const config = vi.mocked(source.search).mock.calls[0][0] as SearchConfig;
-    expect(config.departureFrom.toISOString().slice(0, 10)).toBe('2026-07-05');
-    expect(config.departureTo.toISOString().slice(0, 10)).toBe('2026-07-05');
-  });
-
-  it('sets windowMode=false in synthetic config', async () => {
-    const processor = new SearchJobProcessor(
-      [source as never],
-      vpnRouter as never,
-      queue as never,
-    );
-
-    await processor.execute(makeWindowConfig('2026-07-05', '2026-07-05', 14));
-    const config = vi.mocked(source.search).mock.calls[0][0] as SearchConfig;
-    expect(config.windowMode).toBe(false);
-  });
-
-  it('falls through to normal execute when windowDuration is not set', async () => {
-    const processor = new SearchJobProcessor(
-      [source as never],
+      [oneWaySource as never],
       vpnRouter as never,
       queue as never,
     );
 
     const config: SearchConfig = {
-      ...makeWindowConfig('2026-07-01', '2026-07-03', 14),
+      ...makeFlexibleConfig(['BOG']),
+      waypoints: [],
+    };
+    await processor.execute(config);
+
+    expect(oneWaySource.searchOneWay).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no waypoints'));
+    warnSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SearchJobProcessor window mode
+// ---------------------------------------------------------------------------
+
+describe('SearchJobProcessor window mode', () => {
+  let oneWaySource: { name: string; searchOneWay: ReturnType<typeof vi.fn> };
+  let vpnRouter: { getProxyUrl: ReturnType<typeof vi.fn> };
+  let queue: { add: ReturnType<typeof vi.fn> };
+
+  beforeEach(() => {
+    oneWaySource = { name: 'google-flights', searchOneWay: vi.fn().mockResolvedValue([]) };
+    vpnRouter = { getProxyUrl: vi.fn().mockResolvedValue(null) };
+    queue = { add: vi.fn().mockResolvedValue(undefined) };
+  });
+
+  const makeWindowConfig = (rangeStart: string, rangeEnd: string, duration = 14): SearchConfig => ({
+    ...makeConfig({
+      origin: 'SCL',
+      waypoints: [makeStayWaypoint('MAD')],
+      departureFrom: new Date(rangeStart),
+      departureTo: new Date(rangeEnd),
+      proxyRegions: ['CL'],
+      windowMode: true,
+      windowDuration: duration,
+    }),
+  });
+
+  it('iterates once per day in range (3-day range → 3 windows)', async () => {
+    const processor = new SearchJobProcessor(
+      [oneWaySource as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    // 3 days × 2 pairs per 1-waypoint = 6 searchOneWay calls
+    await processor.execute(makeWindowConfig('2026-07-25', '2026-07-27'));
+
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(6);
+  });
+
+  it('each window synthetic config has departureFrom === departureTo === window date', async () => {
+    const processor = new SearchJobProcessor(
+      [oneWaySource as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    await processor.execute(makeWindowConfig('2026-07-25', '2026-07-27'));
+
+    // Each searchOneWay receives the config with departureFrom = departureTo
+    const configs = vi.mocked(oneWaySource.searchOneWay).mock.calls.map((c: any) => c[0] as SearchConfig);
+    // Get unique departure dates used
+    const dates = [...new Set(configs.map((c) => c.departureFrom.toISOString().slice(0, 10)))];
+    expect(dates.sort()).toEqual(['2026-07-25', '2026-07-26', '2026-07-27']);
+
+    // Each config has departureFrom === departureTo
+    for (const cfg of configs) {
+      expect(cfg.departureFrom.toISOString().slice(0, 10)).toBe(
+        cfg.departureTo.toISOString().slice(0, 10),
+      );
+    }
+  });
+
+  it('caps at 30 windows max', async () => {
+    const processor = new SearchJobProcessor(
+      [oneWaySource as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    // 90-day range → capped at 30 windows × 2 pairs = 60 calls
+    await processor.execute(makeWindowConfig('2026-07-01', '2026-09-29'));
+
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(60);
+  });
+
+  it('sets windowMode=false in each synthetic config', async () => {
+    const processor = new SearchJobProcessor(
+      [oneWaySource as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    await processor.execute(makeWindowConfig('2026-07-25', '2026-07-25'));
+
+    const configs = vi.mocked(oneWaySource.searchOneWay).mock.calls.map((c: any) => c[0] as SearchConfig);
+    for (const cfg of configs) {
+      expect(cfg.windowMode).toBe(false);
+    }
+  });
+
+  it('falls through to executeWaypoints when windowMode is false', async () => {
+    const processor = new SearchJobProcessor(
+      [oneWaySource as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    const config: SearchConfig = {
+      ...makeWindowConfig('2026-07-25', '2026-07-27'),
+      windowMode: false,
+    };
+    await processor.execute(config);
+
+    // Falls through to single executeWaypoints call: 2 pairs
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls through to executeWaypoints when windowDuration is undefined', async () => {
+    const processor = new SearchJobProcessor(
+      [oneWaySource as never],
+      vpnRouter as never,
+      queue as never,
+    );
+
+    const config: SearchConfig = {
+      ...makeWindowConfig('2026-07-25', '2026-07-27'),
       windowDuration: undefined,
     };
     await processor.execute(config);
-    // No windowDuration → falls through to roundtrip, 1 region × 1 source = 1 call
-    expect(source.search).toHaveBeenCalledTimes(1);
+
+    // No windowDuration → falls through: 2 pairs
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(2);
   });
 });

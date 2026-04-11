@@ -8,12 +8,11 @@ const makeConfig = (overrides: Partial<SearchConfig> = {}): SearchConfig => ({
   id: 'search-r1',
   name: 'Resilience Test',
   origin: 'SCL',
-  destination: 'MAD',
   departureFrom: new Date('2025-07-01'),
   departureTo: new Date('2025-07-15'),
-  returnMinDays: 7,
-  returnMaxDays: 14,
   passengers: 2,
+  waypoints: [{ airport: 'MAD', gap: { type: 'stay', minDays: 7, maxDays: 14 } }],
+  maxConnectionHours: 24,
   proxyRegions: ['CL'],
   scanIntervalMin: 60,
   active: true,
@@ -23,8 +22,6 @@ const makeConfig = (overrides: Partial<SearchConfig> = {}): SearchConfig => ({
     airportPreferred: {},
     airportBlacklist: {},
     maxUnplannedStops: 1,
-    minConnectionTime: 60,
-    maxConnectionTime: 240,
     requireCarryOn: false,
     maxTotalTravelTime: 1440,
   },
@@ -38,7 +35,7 @@ const makeConfig = (overrides: Partial<SearchConfig> = {}): SearchConfig => ({
 
 const makeResult = (overrides: Partial<FlightResult> = {}): FlightResult => ({
   searchId: 'search-r1',
-  source: 'kiwi',
+  source: 'google-flights',
   outbound: {
     departure: { airport: 'SCL', time: '2025-07-01T10:00:00' },
     arrival: { airport: 'MAD', time: '2025-07-01T22:00:00' },
@@ -47,33 +44,26 @@ const makeResult = (overrides: Partial<FlightResult> = {}): FlightResult => ({
     durationMinutes: 720,
     stops: 0,
   },
-  inbound: {
-    departure: { airport: 'MAD', time: '2025-07-15T08:00:00' },
-    arrival: { airport: 'SCL', time: '2025-07-15T22:00:00' },
-    airline: 'LA',
-    flightNumber: 'LA702',
-    durationMinutes: 840,
-    stops: 0,
-  },
+  inbound: null,
   totalPrice: 1200,
   currency: 'USD',
   pricePer: 'total',
   passengers: 2,
   carryOnIncluded: true,
-  bookingUrl: 'https://kiwi.com/booking',
+  bookingUrl: 'https://google.com/flights',
   scrapedAt: new Date(),
   proxyRegion: 'CL',
   ...overrides,
 });
 
 describe('SearchJobProcessor — resilience wiring', () => {
-  let source: { name: string; search: ReturnType<typeof vi.fn> };
+  let oneWaySource: { name: string; searchOneWay: ReturnType<typeof vi.fn> };
   let vpnRouter: { getProxyUrl: ReturnType<typeof vi.fn> };
   let queue: { add: ReturnType<typeof vi.fn> };
   let resilience: ResilienceLayer & { callSource: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
-    source = { name: 'kiwi', search: vi.fn().mockResolvedValue([makeResult()]) };
+    oneWaySource = { name: 'google-flights', searchOneWay: vi.fn().mockResolvedValue([makeResult()]) };
     vpnRouter = { getProxyUrl: vi.fn().mockResolvedValue(null) };
     queue = { add: vi.fn().mockResolvedValue(undefined) };
     resilience = {
@@ -85,8 +75,11 @@ describe('SearchJobProcessor — resilience wiring', () => {
   });
 
   it('delegates each source call through the resilience layer', async () => {
+    // 1-waypoint [MAD] → 2 unique pairs (SCL→MAD, MAD→SCL) → 2 resilience calls
+    resilience.callSource.mockResolvedValue({ result: [], skipped: false });
+
     const processor = new SearchJobProcessor(
-      [source as never],
+      [oneWaySource as never],
       vpnRouter as never,
       queue as never,
       resilience as never,
@@ -94,15 +87,15 @@ describe('SearchJobProcessor — resilience wiring', () => {
 
     await processor.execute(makeConfig());
 
-    expect(resilience.callSource).toHaveBeenCalledOnce();
-    expect(resilience.callSource).toHaveBeenCalledWith('kiwi', false, expect.any(Function));
+    expect(resilience.callSource).toHaveBeenCalledTimes(2);
+    expect(resilience.callSource).toHaveBeenCalledWith('google-flights', false, expect.any(Function));
   });
 
   it('skips publishing when resilience layer returns skipped=true (open circuit)', async () => {
     resilience.callSource.mockResolvedValue({ result: null, skipped: true });
 
     const processor = new SearchJobProcessor(
-      [source as never],
+      [oneWaySource as never],
       vpnRouter as never,
       queue as never,
       resilience as never,
@@ -110,16 +103,18 @@ describe('SearchJobProcessor — resilience wiring', () => {
 
     await processor.execute(makeConfig());
 
-    // Source function itself should NOT have been called — resilience skipped it
     expect(queue.add).not.toHaveBeenCalled();
   });
 
   it('publishes results returned by the resilience layer', async () => {
-    const result = makeResult({ source: 'kiwi' });
-    resilience.callSource.mockResolvedValue({ result: [result], skipped: false });
+    const result = makeResult({ source: 'google-flights' });
+    // Return results for first pair only, empty for the second
+    resilience.callSource
+      .mockResolvedValueOnce({ result: [result], skipped: false })
+      .mockResolvedValue({ result: [], skipped: false });
 
     const processor = new SearchJobProcessor(
-      [source as never],
+      [oneWaySource as never],
       vpnRouter as never,
       queue as never,
       resilience as never,
@@ -134,7 +129,7 @@ describe('SearchJobProcessor — resilience wiring', () => {
     resilience.callSource.mockResolvedValue({ result: null, skipped: false });
 
     const processor = new SearchJobProcessor(
-      [source as never],
+      [oneWaySource as never],
       vpnRouter as never,
       queue as never,
       resilience as never,
@@ -146,27 +141,27 @@ describe('SearchJobProcessor — resilience wiring', () => {
   });
 
   it('uses PassthroughResilienceLayer when none provided (backward compat)', async () => {
-    source.search.mockResolvedValue([makeResult()]);
+    const result = makeResult();
+    oneWaySource.searchOneWay
+      .mockResolvedValueOnce([result])
+      .mockResolvedValue([]);
 
     // No resilience arg → PassthroughResilienceLayer
     const processor = new SearchJobProcessor(
-      [source as never],
+      [oneWaySource as never],
       vpnRouter as never,
       queue as never,
     );
 
     await processor.execute(makeConfig());
 
-    expect(source.search).toHaveBeenCalledOnce();
+    // searchOneWay called for 2 pairs; first call yields 1 result
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(2);
     expect(queue.add).toHaveBeenCalledOnce();
   });
 
-  it('calls resilience layer for each leg in split mode', async () => {
-    const oneWaySource = {
-      name: 'google-flights',
-      search: vi.fn(),
-      searchOneWay: vi.fn().mockResolvedValue([]),
-    };
+  it('calls resilience layer for each unique waypoint pair', async () => {
+    // 2-waypoint [LIM, CUZ] → 6 unique pairs → 6 resilience calls
     resilience.callSource.mockResolvedValue({ result: [], skipped: false });
 
     const processor = new SearchJobProcessor(
@@ -176,27 +171,20 @@ describe('SearchJobProcessor — resilience wiring', () => {
       resilience as never,
     );
 
-    const splitConfig = makeConfig({
-      mode: 'split',
-      legs: [
-        { origin: 'SCL', destination: 'MAD', departureFrom: new Date('2025-07-01'), departureTo: new Date('2025-07-10') },
-        { origin: 'MAD', destination: 'SCL', departureFrom: new Date('2025-07-15'), departureTo: new Date('2025-07-20') },
+    const config = makeConfig({
+      waypoints: [
+        { airport: 'LIM', gap: { type: 'stay', minDays: 3, maxDays: 5 } },
+        { airport: 'CUZ', gap: { type: 'stay', minDays: 3, maxDays: 5 } },
       ],
     });
 
-    await processor.execute(splitConfig);
+    await processor.execute(config);
 
-    // 2 legs → 2 resilience calls
-    expect(resilience.callSource).toHaveBeenCalledTimes(2);
+    expect(resilience.callSource).toHaveBeenCalledTimes(6);
     expect(resilience.callSource).toHaveBeenCalledWith('google-flights', false, expect.any(Function));
   });
 
-  it('skips leg when circuit open in split mode', async () => {
-    const oneWaySource = {
-      name: 'google-flights',
-      search: vi.fn(),
-      searchOneWay: vi.fn().mockResolvedValue([makeResult()]),
-    };
+  it('skips pair when circuit open in waypoint mode', async () => {
     resilience.callSource.mockResolvedValue({ result: null, skipped: true });
 
     const processor = new SearchJobProcessor(
@@ -206,14 +194,7 @@ describe('SearchJobProcessor — resilience wiring', () => {
       resilience as never,
     );
 
-    const splitConfig = makeConfig({
-      mode: 'split',
-      legs: [
-        { origin: 'SCL', destination: 'MAD', departureFrom: new Date('2025-07-01'), departureTo: new Date('2025-07-10') },
-      ],
-    });
-
-    await processor.execute(splitConfig);
+    await processor.execute(makeConfig());
 
     expect(queue.add).not.toHaveBeenCalled();
   });
