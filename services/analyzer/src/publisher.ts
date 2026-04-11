@@ -54,8 +54,6 @@ export class Publisher {
         score,
         scoreBreakdown: scoreBreakdown as object,
         alertLevel: alertLevel ?? undefined,
-        legIndex: flight.legIndex ?? 0,
-        planIndex: flight.planIndex ?? 0,
         scrapedAt: flight.scrapedAt,
       },
     });
