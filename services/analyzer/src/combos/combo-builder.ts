@@ -27,6 +27,8 @@ export function topNPerLeg(maxCombos: number, legCount: number): number {
 export interface GapConstraint {
   minDays: number;
   maxDays: number;
+  /** Optional: max hours between previous leg's ARRIVAL and this leg's DEPARTURE. */
+  maxHours?: number;
 }
 
 export interface BuildCombosOptions {
@@ -93,6 +95,13 @@ export function buildCombos(
         if (constraint) {
           const days = gapDays(prev, candidate);
           if (days < constraint.minDays || days > constraint.maxDays) continue;
+
+          if (constraint.maxHours !== undefined) {
+            const prevArrMs = new Date(prev.outbound.arrival.time).getTime();
+            const thisDepMs = new Date(candidate.outbound.departure.time).getTime();
+            const waitHours = (thisDepMs - prevArrMs) / (60 * 60 * 1000);
+            if (waitHours > constraint.maxHours) continue;
+          }
         }
       }
       const next = cartesian(legs, [...current, candidate]);

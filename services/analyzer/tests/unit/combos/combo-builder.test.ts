@@ -254,6 +254,92 @@ describe('buildCombos N-leg', () => {
   });
 });
 
+describe('maxHours constraint', () => {
+  it('rejects gaps longer than maxHours when set', () => {
+    // leg1 arrives at 13:00, leg2 departs at 21:00 → 8h wait
+    const leg1 = makeFlight({
+      outbound: {
+        departure: { airport: 'BUE', time: '2026-07-28T08:00:00.000Z' },
+        arrival: { airport: 'CUZ', time: '2026-07-28T13:00:00.000Z' },
+        airline: 'LATAM',
+        flightNumber: 'N/A',
+        durationMinutes: 0,
+        stops: 0,
+      },
+    });
+    const leg2 = makeFlight({
+      outbound: {
+        departure: { airport: 'CUZ', time: '2026-07-28T21:00:00.000Z' },
+        arrival: { airport: 'LIM', time: '2026-07-28T23:00:00.000Z' },
+        airline: 'LATAM',
+        flightNumber: 'N/A',
+        durationMinutes: 0,
+        stops: 0,
+      },
+    });
+    const combos = buildCombos([[leg1], [leg2]], {
+      gapConstraints: [{ minDays: 0, maxDays: 1, maxHours: 5 }],
+    });
+    expect(combos).toHaveLength(0); // 8h > 5h, rejected
+  });
+
+  it('accepts gaps within maxHours', () => {
+    // leg1 arrives at 13:00, leg2 departs at 16:00 → 3h wait
+    const leg1 = makeFlight({
+      outbound: {
+        departure: { airport: 'BUE', time: '2026-07-28T08:00:00.000Z' },
+        arrival: { airport: 'CUZ', time: '2026-07-28T13:00:00.000Z' },
+        airline: 'LATAM',
+        flightNumber: 'N/A',
+        durationMinutes: 0,
+        stops: 0,
+      },
+    });
+    const leg2 = makeFlight({
+      outbound: {
+        departure: { airport: 'CUZ', time: '2026-07-28T16:00:00.000Z' },
+        arrival: { airport: 'LIM', time: '2026-07-28T18:00:00.000Z' },
+        airline: 'LATAM',
+        flightNumber: 'N/A',
+        durationMinutes: 0,
+        stops: 0,
+      },
+    });
+    const combos = buildCombos([[leg1], [leg2]], {
+      gapConstraints: [{ minDays: 0, maxDays: 1, maxHours: 5 }],
+    });
+    expect(combos).toHaveLength(1);
+  });
+
+  it('still enforces minDays/maxDays when maxHours is also set', () => {
+    // leg2 departs 4 days after leg1 → fails maxDays=1 even though maxHours=200 would allow it
+    const leg1 = makeFlight({
+      outbound: {
+        departure: { airport: 'BUE', time: '2026-07-25T08:00:00.000Z' },
+        arrival: { airport: 'CUZ', time: '2026-07-25T13:00:00.000Z' },
+        airline: 'LATAM',
+        flightNumber: 'N/A',
+        durationMinutes: 0,
+        stops: 0,
+      },
+    });
+    const leg2 = makeFlight({
+      outbound: {
+        departure: { airport: 'CUZ', time: '2026-07-29T08:00:00.000Z' },
+        arrival: { airport: 'LIM', time: '2026-07-29T10:00:00.000Z' },
+        airline: 'LATAM',
+        flightNumber: 'N/A',
+        durationMinutes: 0,
+        stops: 0,
+      },
+    });
+    const combos = buildCombos([[leg1], [leg2]], {
+      gapConstraints: [{ minDays: 0, maxDays: 1, maxHours: 200 }],
+    });
+    expect(combos).toHaveLength(0); // 4 days > maxDays=1
+  });
+});
+
 describe('scoreCombo', () => {
   it('returns a score between 0 and 100', () => {
     const combo = [
