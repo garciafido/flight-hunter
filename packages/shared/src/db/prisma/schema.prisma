@@ -199,7 +199,7 @@ model SourceMetric {
 
 model SystemSettings {
   id                String   @id @default("singleton")
-  emailsPaused      Boolean  @default(false) @map("emails_paused")
+  emailsPaused      Boolean  @default(true) @map("emails_paused")
   webhookUrl        String?  @map("webhook_url")
   webhookEnabled    Boolean  @default(false) @map("webhook_enabled")
   slackWebhookUrl   String?  @map("slack_webhook_url")
