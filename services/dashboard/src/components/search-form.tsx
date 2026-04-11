@@ -7,36 +7,78 @@ interface SearchFormProps {
   onCreated?: (search: any) => void;
 }
 
+interface WaypointFormEntry {
+  id: string;
+  airport: string;
+  type: 'stay' | 'connection';
+  minDays: number;
+  maxDays: number;
+  maxHours: number;
+  pin: 'first' | 'last' | 'none';
+}
+
+interface FormState {
+  name: string;
+  origin: string;
+  passengers: number;
+  departureFrom: string;
+  departureTo: string;
+  maxConnectionHours: number;
+  waypoints: WaypointFormEntry[];
+  filtersJson: string;
+  scoreThresholdInfo: number;
+  scoreThresholdGood: number;
+  scoreThresholdUrgent: number;
+  maxPricePerPerson: number | '';
+  targetPricePerPerson: number | '';
+  dreamPricePerPerson: number | '';
+  currency: string;
+  proxyRegions: string[];
+  scanIntervalMin: number;
+}
+
+function newWaypointEntry(): WaypointFormEntry {
+  return {
+    id: crypto.randomUUID(),
+    airport: '',
+    type: 'stay',
+    minDays: 1,
+    maxDays: 7,
+    maxHours: 6,
+    pin: 'none',
+  };
+}
+
 export function SearchForm({ onCreated }: SearchFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<FormState>({
     name: '',
     origin: '',
-    destination: '',
-    stopoverAirport: '',
-    stopoverMinDays: '',
-    stopoverMaxDays: '',
+    passengers: 1,
     departureFrom: '',
     departureTo: '',
-    returnMinDays: '',
-    returnMaxDays: '',
-    passengers: '1',
-    filters: '{}',
-    scoreThresholdInfo: '30',
-    scoreThresholdGood: '60',
-    scoreThresholdUrgent: '80',
+    maxConnectionHours: 6,
+    waypoints: [newWaypointEntry()],
+    filtersJson: '{}',
+    scoreThresholdInfo: 30,
+    scoreThresholdGood: 60,
+    scoreThresholdUrgent: 80,
     maxPricePerPerson: '',
     targetPricePerPerson: '',
     dreamPricePerPerson: '',
     currency: 'USD',
-    proxyRegions: [] as string[],
-    scanIntervalMin: '60',
+    proxyRegions: [],
+    scanIntervalMin: 60,
   });
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value, type } = e.target;
+    setForm(prev => ({
+      ...prev,
+      [name]: type === 'number' ? (value === '' ? '' : Number(value)) : value,
+    }));
   }
 
   function handleCheckbox(e: React.ChangeEvent<HTMLInputElement>) {
@@ -49,46 +91,94 @@ export function SearchForm({ onCreated }: SearchFormProps) {
     }));
   }
 
+  function insertAt(index: number) {
+    setForm(prev => ({
+      ...prev,
+      waypoints: [
+        ...prev.waypoints.slice(0, index),
+        newWaypointEntry(),
+        ...prev.waypoints.slice(index),
+      ],
+    }));
+  }
+
+  function removeWaypoint(index: number) {
+    setForm(prev => ({
+      ...prev,
+      waypoints: prev.waypoints.filter((_, i) => i !== index),
+    }));
+  }
+
+  function updateWaypoint(index: number, partial: Partial<WaypointFormEntry>) {
+    setForm(prev => ({
+      ...prev,
+      waypoints: prev.waypoints.map((wp, i) => (i === index ? { ...wp, ...partial } : wp)),
+    }));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (form.waypoints.length === 0) {
+      setError('Agregá al menos una parada');
+      return;
+    }
+    const firsts = form.waypoints.filter(w => w.pin === 'first').length;
+    const lasts = form.waypoints.filter(w => w.pin === 'last').length;
+    if (firsts > 1) {
+      setError('Solo una parada puede ser pineada como primera');
+      return;
+    }
+    if (lasts > 1) {
+      setError('Solo una parada puede ser pineada como última');
+      return;
+    }
+    for (const wp of form.waypoints) {
+      if (wp.airport.length !== 3) {
+        setError(`Aeropuerto inválido: "${wp.airport}" (debe ser código IATA de 3 letras)`);
+        return;
+      }
+      if (wp.type === 'stay' && wp.minDays > wp.maxDays) {
+        setError(`En ${wp.airport}: min días no puede ser mayor que max días`);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       let filters: any = {};
-      try { filters = JSON.parse(form.filters); } catch { filters = {}; }
+      try { filters = JSON.parse(form.filtersJson); } catch { filters = {}; }
 
-      const payload: any = {
+      const payload = {
         name: form.name,
         origin: form.origin,
-        destination: form.destination,
+        passengers: Number(form.passengers),
         departureFrom: form.departureFrom,
         departureTo: form.departureTo,
-        returnMinDays: parseInt(form.returnMinDays, 10),
-        returnMaxDays: parseInt(form.returnMaxDays, 10),
-        passengers: parseInt(form.passengers, 10),
+        maxConnectionHours: Number(form.maxConnectionHours),
+        waypoints: form.waypoints.map(wp => ({
+          airport: wp.airport,
+          gap: wp.type === 'stay'
+            ? { type: 'stay' as const, minDays: Number(wp.minDays), maxDays: Number(wp.maxDays) }
+            : { type: 'connection' as const, maxHours: Number(wp.maxHours) },
+          ...(wp.pin !== 'none' ? { pin: wp.pin } : {}),
+        })),
         filters,
         alertConfig: {
           scoreThresholds: {
-            info: parseInt(form.scoreThresholdInfo, 10),
-            good: parseInt(form.scoreThresholdGood, 10),
-            urgent: parseInt(form.scoreThresholdUrgent, 10),
+            info: Number(form.scoreThresholdInfo),
+            good: Number(form.scoreThresholdGood),
+            urgent: Number(form.scoreThresholdUrgent),
           },
-          maxPricePerPerson: parseFloat(form.maxPricePerPerson),
-          targetPricePerPerson: form.targetPricePerPerson ? parseFloat(form.targetPricePerPerson) : undefined,
-          dreamPricePerPerson: form.dreamPricePerPerson ? parseFloat(form.dreamPricePerPerson) : undefined,
+          maxPricePerPerson: Number(form.maxPricePerPerson),
+          ...(form.targetPricePerPerson !== '' ? { targetPricePerPerson: Number(form.targetPricePerPerson) } : {}),
+          ...(form.dreamPricePerPerson !== '' ? { dreamPricePerPerson: Number(form.dreamPricePerPerson) } : {}),
           currency: form.currency,
         },
         proxyRegions: form.proxyRegions,
-        scanIntervalMin: parseInt(form.scanIntervalMin, 10),
+        scanIntervalMin: Number(form.scanIntervalMin),
       };
-
-      if (form.stopoverAirport) {
-        payload.stopover = {
-          airport: form.stopoverAirport,
-          minDays: parseInt(form.stopoverMinDays, 10),
-          maxDays: parseInt(form.stopoverMaxDays, 10),
-        };
-      }
 
       const result = await createSearch(payload);
       onCreated?.(result);
@@ -108,12 +198,29 @@ export function SearchForm({ onCreated }: SearchFormProps) {
   const sectionTitleStyle: React.CSSProperties = { fontSize: 15, fontWeight: 700, marginBottom: 12, borderBottom: '1px solid #e5e7eb', paddingBottom: 6 };
   const rowStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 };
 
+  const waypointAnchorStyle: React.CSSProperties = {
+    border: '2px solid #2563eb', borderRadius: 8, padding: '8px 16px',
+    fontWeight: 700, textAlign: 'center', background: '#eff6ff', color: '#1e40af',
+  };
+  const waypointCardStyle: React.CSSProperties = {
+    border: '1px solid #d1d5db', borderRadius: 8, padding: 12, background: '#fff',
+  };
+  const connectorStyle: React.CSSProperties = {
+    width: 2, height: 16, background: '#cbd5e1', margin: '0 auto',
+  };
+  const insertButtonStyle: React.CSSProperties = {
+    display: 'block', margin: '4px auto', padding: '4px 12px',
+    border: '1px dashed #94a3b8', borderRadius: 4, background: '#f8fafc',
+    color: '#475569', fontSize: 12, cursor: 'pointer',
+  };
+
   return (
     <form onSubmit={handleSubmit} style={{ maxWidth: 600 }}>
       {error && <div style={{ color: '#dc2626', marginBottom: 12 }}>{error}</div>}
 
+      {/* Section 1 — Información general */}
       <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>Información General</div>
+        <div style={sectionTitleStyle}>Información general</div>
         <div style={{ marginBottom: 12 }}>
           <label style={labelStyle}>Nombre</label>
           <input name="name" value={form.name} onChange={handleChange} required style={inputStyle} />
@@ -121,71 +228,167 @@ export function SearchForm({ onCreated }: SearchFormProps) {
         <div style={rowStyle}>
           <div>
             <label style={labelStyle}>Origen</label>
-            <input name="origin" value={form.origin} onChange={handleChange} required style={inputStyle} placeholder="SCL" />
+            <input name="origin" value={form.origin} onChange={handleChange} required style={inputStyle} placeholder="SCL" maxLength={3} />
           </div>
           <div>
-            <label style={labelStyle}>Destino</label>
-            <input name="destination" value={form.destination} onChange={handleChange} required style={inputStyle} placeholder="MAD" />
+            <label style={labelStyle}>Pasajeros</label>
+            <input name="passengers" value={form.passengers} onChange={handleChange} type="number" min="1" max="9" required style={inputStyle} />
           </div>
         </div>
-      </div>
-
-      <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>Escala (Opcional)</div>
         <div style={rowStyle}>
           <div>
-            <label style={labelStyle}>Aeropuerto de Escala</label>
-            <input name="stopoverAirport" value={form.stopoverAirport} onChange={handleChange} style={inputStyle} placeholder="LHR" />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div>
-              <label style={labelStyle}>Min Días</label>
-              <input name="stopoverMinDays" value={form.stopoverMinDays} onChange={handleChange} type="number" min="0" style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>Max Días</label>
-              <input name="stopoverMaxDays" value={form.stopoverMaxDays} onChange={handleChange} type="number" min="0" style={inputStyle} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>Fechas y Estadía</div>
-        <div style={rowStyle}>
-          <div>
-            <label style={labelStyle}>Salida Desde</label>
+            <label style={labelStyle}>Salida desde</label>
             <input name="departureFrom" value={form.departureFrom} onChange={handleChange} type="date" required style={inputStyle} />
           </div>
           <div>
-            <label style={labelStyle}>Salida Hasta</label>
+            <label style={labelStyle}>Salida hasta</label>
             <input name="departureTo" value={form.departureTo} onChange={handleChange} type="date" required style={inputStyle} />
           </div>
         </div>
-        <div style={rowStyle}>
-          <div>
-            <label style={labelStyle}>Mín Días de Retorno</label>
-            <input name="returnMinDays" value={form.returnMinDays} onChange={handleChange} type="number" min="1" required style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>Máx Días de Retorno</label>
-            <input name="returnMaxDays" value={form.returnMaxDays} onChange={handleChange} type="number" min="1" required style={inputStyle} />
-          </div>
-        </div>
-        <div>
-          <label style={labelStyle}>Pasajeros</label>
-          <input name="passengers" value={form.passengers} onChange={handleChange} type="number" min="1" max="9" required style={{ ...inputStyle, width: 80 }} />
+        <div style={{ marginBottom: 12 }}>
+          <label style={labelStyle}>Máx horas de conexión</label>
+          <input name="maxConnectionHours" value={form.maxConnectionHours} onChange={handleChange} type="number" min="1" style={{ ...inputStyle, width: 120 }} />
         </div>
       </div>
 
+      {/* Section 2 — Itinerario */}
       <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>Filtros (JSON)</div>
-        <textarea name="filters" value={form.filters} onChange={handleChange} rows={4}
-          style={{ ...inputStyle, fontFamily: 'monospace', resize: 'vertical' }} />
+        <div style={sectionTitleStyle}>Itinerario</div>
+
+        {/* Origin anchor */}
+        <div style={waypointAnchorStyle}>[ORIGEN] {form.origin || '???'}</div>
+        <div style={connectorStyle} />
+
+        {/* Insert before index 0 */}
+        <button type="button" style={insertButtonStyle} onClick={() => insertAt(0)}>
+          + Insertar parada
+        </button>
+
+        {form.waypoints.map((wp, i) => (
+          <div key={wp.id}>
+            <div style={connectorStyle} />
+            <div style={waypointCardStyle}>
+              {/* Header: airport input + delete button */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <input
+                  data-testid="waypoint-airport"
+                  value={wp.airport}
+                  onChange={e => updateWaypoint(i, { airport: e.target.value.toUpperCase() })}
+                  placeholder="IATA"
+                  maxLength={3}
+                  style={{ ...inputStyle, width: 80, textTransform: 'uppercase' }}
+                />
+                <button
+                  type="button"
+                  data-testid="waypoint-remove"
+                  onClick={() => removeWaypoint(i)}
+                  style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 16 }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Type radio */}
+              <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name={`wp-type-${wp.id}`}
+                    value="stay"
+                    checked={wp.type === 'stay'}
+                    onChange={() => updateWaypoint(i, { type: 'stay' })}
+                  />
+                  Estadía
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name={`wp-type-${wp.id}`}
+                    value="connection"
+                    checked={wp.type === 'connection'}
+                    onChange={() => updateWaypoint(i, { type: 'connection' })}
+                  />
+                  Conexión
+                </label>
+              </div>
+
+              {/* Conditional inputs based on type */}
+              {wp.type === 'stay' ? (
+                <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
+                  <div>
+                    <label style={labelStyle}>Min días</label>
+                    <input
+                      data-testid="waypoint-mindays"
+                      type="number"
+                      min="0"
+                      value={wp.minDays}
+                      onChange={e => updateWaypoint(i, { minDays: Number(e.target.value) })}
+                      style={{ ...inputStyle, width: 80 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Max días</label>
+                    <input
+                      data-testid="waypoint-maxdays"
+                      type="number"
+                      min="0"
+                      value={wp.maxDays}
+                      onChange={e => updateWaypoint(i, { maxDays: Number(e.target.value) })}
+                      style={{ ...inputStyle, width: 80 }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div style={{ marginBottom: 8 }}>
+                  <label style={labelStyle}>Max horas</label>
+                  <input
+                    data-testid="waypoint-maxhours"
+                    type="number"
+                    min="0"
+                    value={wp.maxHours}
+                    onChange={e => updateWaypoint(i, { maxHours: Number(e.target.value) })}
+                    style={{ ...inputStyle, width: 80 }}
+                  />
+                </div>
+              )}
+
+              {/* Pin select */}
+              <div>
+                <label style={labelStyle}>Pin</label>
+                <select
+                  data-testid="waypoint-pin"
+                  value={wp.pin}
+                  onChange={e => updateWaypoint(i, { pin: e.target.value as 'first' | 'last' | 'none' })}
+                  style={{ ...inputStyle, width: 140 }}
+                >
+                  <option value="none">Ninguno</option>
+                  <option value="first">Primera</option>
+                  <option value="last">Última</option>
+                </select>
+              </div>
+            </div>
+            <div style={connectorStyle} />
+
+            {/* Insert after this card (index i+1) */}
+            <button type="button" style={insertButtonStyle} onClick={() => insertAt(i + 1)}>
+              + Insertar parada
+            </button>
+          </div>
+        ))}
+
+        <div style={connectorStyle} />
+        {/* Return anchor */}
+        <div style={waypointAnchorStyle}>[REGRESO] {form.origin || '???'}</div>
+
+        <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, fontStyle: 'italic' }}>
+          El motor probará todas las permutaciones que respeten los pins.
+        </p>
       </div>
 
+      {/* Section 3 — Alertas */}
       <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>Configuración de Alertas</div>
+        <div style={sectionTitleStyle}>Alertas</div>
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
           <div>
             <label style={labelStyle}>Umbral Info</label>
@@ -200,9 +403,10 @@ export function SearchForm({ onCreated }: SearchFormProps) {
             <input name="scoreThresholdUrgent" value={form.scoreThresholdUrgent} onChange={handleChange} type="number" min="0" max="100" style={inputStyle} />
           </div>
         </div>
+
         <div style={rowStyle}>
           <div>
-            <label style={labelStyle}>Precio Máx / Persona</label>
+            <label style={labelStyle}>Precio máx / persona</label>
             <input name="maxPricePerPerson" value={form.maxPricePerPerson} onChange={handleChange} type="number" min="0" required style={inputStyle} />
           </div>
           <div>
@@ -215,43 +419,57 @@ export function SearchForm({ onCreated }: SearchFormProps) {
             </select>
           </div>
         </div>
+
         <div style={rowStyle}>
           <div>
-            <label style={labelStyle}>Precio Objetivo / Persona</label>
+            <label style={labelStyle}>Precio objetivo / persona</label>
             <input name="targetPricePerPerson" value={form.targetPricePerPerson} onChange={handleChange} type="number" min="0" style={inputStyle} />
           </div>
           <div>
-            <label style={labelStyle}>Precio Soñado / Persona</label>
+            <label style={labelStyle}>Precio soñado / persona</label>
             <input name="dreamPricePerPerson" value={form.dreamPricePerPerson} onChange={handleChange} type="number" min="0" style={inputStyle} />
           </div>
         </div>
-      </div>
 
-      <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>Regiones de Proxy</div>
-        <div style={{ display: 'flex', gap: 16 }}>
-          {['CL', 'AR'].map(region => (
-            <label key={region} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                value={region}
-                checked={form.proxyRegions.includes(region)}
-                onChange={handleCheckbox}
-              />
-              {region}
-            </label>
-          ))}
+        <div style={{ marginBottom: 12 }}>
+          <label style={labelStyle}>Regiones de proxy</label>
+          <div style={{ display: 'flex', gap: 16 }}>
+            {['CL', 'AR'].map(region => (
+              <label key={region} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  value={region}
+                  checked={form.proxyRegions.includes(region)}
+                  onChange={handleCheckbox}
+                />
+                {region}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={labelStyle}>Intervalo de escaneo (minutos)</label>
+          <input name="scanIntervalMin" value={form.scanIntervalMin} onChange={handleChange} type="number" min="5" required style={{ ...inputStyle, width: 120 }} />
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={labelStyle}>Filtros (JSON)</label>
+          <textarea
+            name="filtersJson"
+            value={form.filtersJson}
+            onChange={handleChange}
+            rows={4}
+            style={{ ...inputStyle, fontFamily: 'monospace', resize: 'vertical' }}
+          />
         </div>
       </div>
 
-      <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>Escaneo</div>
-        <label style={labelStyle}>Intervalo de Escaneo (minutos)</label>
-        <input name="scanIntervalMin" value={form.scanIntervalMin} onChange={handleChange} type="number" min="5" required style={{ ...inputStyle, width: 120 }} />
-      </div>
-
-      <button type="submit" disabled={loading}
-        style={{ background: '#2563eb', color: '#fff', padding: '10px 24px', borderRadius: 6, border: 'none', fontSize: 15, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}>
+      <button
+        type="submit"
+        disabled={loading}
+        style={{ background: '#2563eb', color: '#fff', padding: '10px 24px', borderRadius: 6, border: 'none', fontSize: 15, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}
+      >
         {loading ? 'Creando...' : 'Crear Búsqueda'}
       </button>
     </form>
