@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { fetchAlerts, fetchSearches, submitAlertFeedback, deleteAlerts } from '@/lib/api';
 import { AlertBadge } from '@/components/alert-badge';
+import { ComboTimeline } from '@/components/combo-timeline';
 
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<any[]>([]);
@@ -56,6 +57,40 @@ export default function AlertsPage() {
     });
   }
 
+  function formatShareDateTime(iso: string | undefined): { text: string; hasTime: boolean } {
+    if (!iso) return { text: '', hasTime: false };
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return { text: '', hasTime: false };
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const date = `${dd}/${mm}`;
+    const isMidnightUtc = d.getUTCHours() === 0 && d.getUTCMinutes() === 0;
+    if (isMidnightUtc) return { text: date, hasTime: false };
+    const hh = String(d.getUTCHours()).padStart(2, '0');
+    const mi = String(d.getUTCMinutes()).padStart(2, '0');
+    return { text: `${date} ${hh}:${mi}`, hasTime: true };
+  }
+
+  function formatShareDuration(minutes: number | undefined): string | null {
+    if (!minutes || minutes <= 0) return null;
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    if (h === 0) return `${m}m`;
+    if (m === 0) return `${h}h`;
+    return `${h}h ${m}m`;
+  }
+
+  function shareStayDays(prevArr: string | undefined, nextDep: string | undefined): number | null {
+    if (!prevArr || !nextDep) return null;
+    const a = new Date(prevArr);
+    const b = new Date(nextDep);
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
+    if (b.getTime() <= a.getTime()) return null;
+    const aDay = Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate());
+    const bDay = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate());
+    return Math.round((bDay - aDay) / 86400000);
+  }
+
   function buildShareText(alert: any, searchName: string): string {
     const combo = alert.comboInfo as { legs?: any[]; totalPrice?: number; plan?: any } | null;
     const isCombo = !!(combo && Array.isArray(combo.legs) && combo.legs.length > 0);
@@ -74,14 +109,40 @@ export default function AlertsPage() {
       }
       lines.push(`💰 *${currency} ${totalPrice} / persona* (${combo!.legs!.length} tramos)`);
       lines.push('');
+      let anyHasTime = false;
       combo!.legs!.forEach((leg: any, idx: number) => {
-        const dep = formatDate(leg.departureTime);
-        lines.push(`*${idx + 1}.* ${leg.departureAirport} → ${leg.arrivalAirport} — ${leg.airline}`);
-        if (dep) lines.push(`   📅 ${dep} (hora local)`);
-        lines.push(`   💵 ${leg.currency} ${leg.price}`);
+        const depFmt = formatShareDateTime(leg.departureTime);
+        const arrFmt = formatShareDateTime(leg.arrivalTime);
+        if (depFmt.hasTime || arrFmt.hasTime) anyHasTime = true;
+        const dur = formatShareDuration(leg.durationMinutes);
+        const durSuffix = dur ? ` (${dur})` : '';
+        const depPart = depFmt.text ? `${leg.departureAirport} ${depFmt.text}` : leg.departureAirport;
+        const arrPart = arrFmt.text ? `${leg.arrivalAirport} ${arrFmt.text}` : leg.arrivalAirport;
+        lines.push(`*${idx + 1}.* ${depPart} → ${arrPart}${durSuffix}`);
+        const airline = leg.airline && leg.airline !== 'Unknown' ? leg.airline : null;
+        if (airline) {
+          lines.push(`   ✈️ ${airline} · ${leg.currency} ${leg.price}`);
+        } else {
+          lines.push(`   💵 ${leg.currency} ${leg.price}`);
+        }
         if (leg.bookingUrl) lines.push(`   🔗 ${leg.bookingUrl}`);
         lines.push('');
+
+        const next = combo!.legs![idx + 1];
+        if (next) {
+          const days = shareStayDays(leg.arrivalTime, next.departureTime);
+          if (days != null) {
+            const emoji = days <= 4 ? '🏨' : '🏖';
+            const stayLabel =
+              days === 0 ? 'conexión en' : days === 1 ? '1 día en' : `${days} días en`;
+            lines.push(`${emoji} ${stayLabel} ${leg.arrivalAirport}`);
+            lines.push('');
+          }
+        }
       });
+      if (anyHasTime) {
+        lines.push('_Horarios en hora local de cada aeropuerto_');
+      }
       return lines.join('\n').trimEnd();
     }
 
@@ -321,83 +382,10 @@ export default function AlertsPage() {
             {isCombo && (
               <div style={{
                 marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9',
-                display: 'flex', flexDirection: 'column', gap: 8,
               }}>
-                {combo!.legs!.map((leg: any, idx: number) => (
-                  <div key={idx} style={{
-                    display: 'grid',
-                    gridTemplateColumns: '24px 1fr auto auto',
-                    gap: 12, alignItems: 'center', fontSize: 13,
-                  }}>
-                    <span style={{
-                      width: 24, height: 24, borderRadius: '50%',
-                      background: '#eff6ff', color: '#1d4ed8',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 11, fontWeight: 600,
-                    }}>
-                      {idx + 1}
-                    </span>
-                    <div>
-                      <div style={{ fontWeight: 500 }}>
-                        {leg.departureAirport} → {leg.arrivalAirport}
-                        {leg.airline && (
-                          <span style={{ color: '#6b7280', fontWeight: 400, marginLeft: 8 }}>
-                            {leg.airline}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
-                        {(() => {
-                          // We store the times as the wall-clock at the airport
-                          // (encoded into UTC just to fit the schema). Render them
-                          // verbatim with timeZone: 'UTC' so the user sees the same
-                          // hours that appeared on Google Flights, and label them
-                          // as "hora local del vuelo" so it's not ambiguous.
-                          const fmt = (iso: string | undefined) => {
-                            if (!iso) return null;
-                            const d = new Date(iso);
-                            const isMidnightUtc = d.getUTCHours() === 0 && d.getUTCMinutes() === 0;
-                            return isMidnightUtc
-                              ? { text: d.toLocaleDateString('es-CL', { timeZone: 'UTC' }), withTime: false }
-                              : {
-                                  text: d.toLocaleString('es-CL', {
-                                    timeZone: 'UTC',
-                                    dateStyle: 'short',
-                                    timeStyle: 'short',
-                                  }),
-                                  withTime: true,
-                                };
-                          };
-                          const dep = fmt(leg.departureTime);
-                          const arr = fmt(leg.arrivalTime);
-                          const hasAnyTime = (dep && dep.withTime) || (arr && arr.withTime);
-                          return (
-                            <>
-                              Salida: {dep?.text ?? '—'}
-                              {arr && <> · Llegada: {arr.text}</>}
-                              {hasAnyTime && (
-                                <span style={{ marginLeft: 6, color: '#cbd5e1', fontStyle: 'italic' }}>
-                                  (hora local del vuelo)
-                                </span>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>
-                      {leg.currency} {Number(leg.price ?? 0).toLocaleString()}
-                    </div>
-                    {leg.bookingUrl && (
-                      <a href={leg.bookingUrl} target="_blank" rel="noopener noreferrer"
-                        style={{ color: '#2563eb', fontSize: 12, whiteSpace: 'nowrap' }}>
-                        Reservar →
-                      </a>
-                    )}
-                  </div>
-                ))}
+                <ComboTimeline legs={combo!.legs! as any} />
                 <div style={{
-                  marginTop: 4, paddingTop: 8, borderTop: '1px dashed #e5e7eb',
+                  marginTop: 12, paddingTop: 8, borderTop: '1px dashed #e5e7eb',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   fontSize: 13,
                 }}>

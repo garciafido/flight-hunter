@@ -135,6 +135,7 @@ export class Publisher {
           departureTime: l.outbound.departure.time,
           arrivalTime: l.outbound.arrival.time,
           bookingUrl: l.bookingUrl,
+          durationMinutes: l.outbound.durationMinutes,
         })),
         totalPrice: totalPricePerPerson,
         ...(plan ? { plan } : {}),

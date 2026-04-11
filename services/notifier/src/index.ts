@@ -2,7 +2,7 @@
 import { Worker, Queue } from 'bullmq';
 import { PrismaClient } from '@flight-hunter/shared/db';
 import { createLogger } from '@flight-hunter/shared/logger';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { WebSocketServer } from 'ws';
 import { QUEUE_NAMES, AlertJobSchema } from '@flight-hunter/shared';
 import type { AlertJob } from '@flight-hunter/shared';

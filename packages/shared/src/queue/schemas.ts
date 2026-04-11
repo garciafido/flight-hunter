@@ -76,7 +76,10 @@ export const AlertJobSchema = z.object({
   scoreBreakdown: ScoreBreakdownSchema,
   flightSummary: FlightSummarySchema,
   combo: z.object({
-    legs: z.array(FlightSummarySchema),
+    legs: z.array(FlightSummarySchema.extend({
+      // Optional flight duration in minutes (only set when the source had real times).
+      durationMinutes: z.number().optional(),
+    })),
     totalPrice: z.number(),
     plan: z.object({
       position: z.enum(['start', 'end', 'any']),

@@ -12,6 +12,25 @@ function formatDate(d: Date): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+/**
+ * Compute the duration of a flight in minutes from its ISO timestamps.
+ * Returns 0 when we don't have real scraped times (depTimeStr/arrTimeStr
+ * undefined means timeStringToIso fell back to midnight UTC).
+ */
+function computeDurationMinutes(
+  depIso: string,
+  arrIso: string,
+  depTimeStr: string | undefined,
+  arrTimeStr: string | undefined,
+): number {
+  if (!depTimeStr || !arrTimeStr) return 0;
+  const depMs = new Date(depIso).getTime();
+  const arrMs = new Date(arrIso).getTime();
+  const diff = arrMs - depMs;
+  if (diff <= 0) return 0;
+  return Math.round(diff / 60000);
+}
+
 export class GoogleFlightsSource implements FlightSource {
   readonly name = 'google-flights';
 
@@ -93,10 +112,58 @@ export class GoogleFlightsSource implements FlightSource {
       const body = document.body.innerText;
       const lines = body.split('\n').map((l) => l.trim()).filter(Boolean);
 
-      // Match Google Flights time-range patterns. The displayed format
-      // typically looks like: "8:40 AM – 5:20 PM" or "5:10 PM – 1:00 AM+1".
-      // We accept both en-dash (–), em-dash (—) and plain hyphen.
+      // Google Flights renders flight times in two layouts:
+      //   (a) single line: "8:40 AM – 5:20 PM" or "5:10 PM – 1:00 AM+1"
+      //   (b) three lines: "8:40 AM" / "–" / "5:20 PM" (this is what the
+      //       innerText of the live listing actually produces)
+      // We try (a) first as a fallback and otherwise look for two TIME_ONLY
+      // lines back-to-back (separated by an optional dash line).
       const TIME_RANGE = /^(\d{1,2}:\d{2}\s*[AP]M)\s*[–—-]\s*(\d{1,2}:\d{2}\s*[AP]M)(\+\d+)?$/;
+      const TIME_ONLY = /^(\d{1,2}:\d{2}\s*[AP]M)(\+\d+)?$/i;
+      const DASH_ONLY = /^[–—-]$/;
+
+      function findTimeRange(idxStart: number, idxEnd: number): {
+        departureTime: string;
+        arrivalTime: string;
+        nextDay: boolean;
+      } | undefined {
+        const step = idxEnd >= idxStart ? 1 : -1;
+        for (let j = idxStart; step > 0 ? j <= idxEnd : j >= idxEnd; j += step) {
+          const line = lines[j];
+          if (!line) continue;
+          // (a) Single-line range
+          const single = line.match(TIME_RANGE);
+          if (single) {
+            return {
+              departureTime: single[1].replace(/\s+/g, ' ').trim(),
+              arrivalTime: single[2].replace(/\s+/g, ' ').trim(),
+              nextDay: !!single[3],
+            };
+          }
+          // (b) Multi-line: a TIME_ONLY here, optional dash next, then another TIME_ONLY
+          const first = line.match(TIME_ONLY);
+          if (first) {
+            // Look for the second time within the next few lines
+            for (let k = j + 1; k <= Math.min(lines.length - 1, j + 4); k++) {
+              const candidate = lines[k];
+              if (!candidate) continue;
+              if (DASH_ONLY.test(candidate)) continue; // skip dash separator
+              const second = candidate.match(TIME_ONLY);
+              if (second) {
+                return {
+                  departureTime: first[1].replace(/\s+/g, ' ').trim(),
+                  arrivalTime: second[1].replace(/\s+/g, ' ').trim(),
+                  nextDay: !!first[2] || !!second[2],
+                };
+              }
+              // If we hit something that isn't a dash and isn't a time, abort
+              // to avoid misreading unrelated lines.
+              break;
+            }
+          }
+        }
+        return undefined;
+      }
 
       for (let i = 0; i < lines.length; i++) {
         const m = lines[i].match(/^\$(\d{1,3}(?:,\d{3})*)$/);
@@ -106,41 +173,33 @@ export class GoogleFlightsSource implements FlightSource {
 
         let airline = '';
         let stops = '';
-        let departureTime: string | undefined;
-        let arrivalTime: string | undefined;
-        let nextDay: boolean | undefined;
+        // Look BACKWARD first — the listing usually has [time/airline/stops/...] before $price
+        const lookbackEnd = Math.max(0, i - 25);
+        const lookaheadEnd = Math.min(lines.length - 1, i + 10);
 
-        // Look forward (the time range usually appears AFTER the price line in the rendered
-        // listing) AND backward (some layouts put it before the airline name).
-        const lookahead = Math.min(lines.length - 1, i + 10);
-        const lookback = Math.max(0, i - 15);
-        for (let j = i + 1; j <= lookahead && !departureTime; j++) {
-          const tm = lines[j].match(TIME_RANGE);
-          if (tm) {
-            departureTime = tm[1].replace(/\s+/g, ' ').trim();
-            arrivalTime = tm[2].replace(/\s+/g, ' ').trim();
-            nextDay = !!tm[3];
-            break;
-          }
-        }
-        for (let j = i - 1; j >= lookback; j--) {
+        for (let j = i - 1; j >= lookbackEnd; j--) {
           const prev = lines[j];
-          if (!airline && /LATAM|Aerol|Avianca|Copa|JetSMART|Sky|GOL|Azul|American|Delta|United/i.test(prev)) {
+          if (!airline && /LATAM|Aerol|Avianca|Copa|JetSMART|Sky|GOL|Azul|American|Delta|United|Iberia|Air France|KLM|Lufthansa/i.test(prev)) {
             airline = prev.split('Operated')[0].trim();
           }
           if (!stops && /^\d+ stop|^Nonstop$/i.test(prev)) {
             stops = prev;
           }
-          if (!departureTime) {
-            const tm = prev.match(TIME_RANGE);
-            if (tm) {
-              departureTime = tm[1].replace(/\s+/g, ' ').trim();
-              arrivalTime = tm[2].replace(/\s+/g, ' ').trim();
-              nextDay = !!tm[3];
-            }
-          }
+          if (airline && stops) break;
         }
-        items.push({ price, airline, stops, departureTime, arrivalTime, nextDay });
+
+        // Find time range — backward first, then forward
+        const back = findTimeRange(i - 1, lookbackEnd);
+        const range = back ?? findTimeRange(i + 1, lookaheadEnd);
+
+        items.push({
+          price,
+          airline,
+          stops,
+          departureTime: range?.departureTime,
+          arrivalTime: range?.arrivalTime,
+          nextDay: range?.nextDay,
+        });
       }
 
       const seen = new Set<string>();
@@ -241,6 +300,7 @@ export class GoogleFlightsSource implements FlightSource {
             const stopCount = /nonstop/i.test(f.stops) ? 0 : parseInt(f.stops, 10) || 1;
             const depIso = this.timeStringToIso(dep, f.departureTime, 0);
             const arrIso = this.timeStringToIso(dep, f.arrivalTime, f.nextDay ? 1 : 0);
+            const durationMinutes = computeDurationMinutes(depIso, arrIso, f.departureTime, f.arrivalTime);
             // For a one-way leg the inbound is a stub pointing back so the type is satisfied
             allResults.push({
               searchId: config.id,
@@ -250,7 +310,7 @@ export class GoogleFlightsSource implements FlightSource {
                 arrival: { airport: leg.destination, time: arrIso },
                 airline: f.airline || 'Unknown',
                 flightNumber: 'N/A',
-                durationMinutes: 0,
+                durationMinutes,
                 stops: stopCount,
               },
               inbound: {
@@ -258,7 +318,7 @@ export class GoogleFlightsSource implements FlightSource {
                 arrival: { airport: leg.origin, time: arrIso },
                 airline: f.airline || 'Unknown',
                 flightNumber: 'N/A',
-                durationMinutes: 0,
+                durationMinutes,
                 stops: stopCount,
               },
               totalPrice: f.price,
@@ -319,6 +379,7 @@ export class GoogleFlightsSource implements FlightSource {
             const stopCount = /nonstop/i.test(f.stops) ? 0 : parseInt(f.stops, 10) || 1;
             const outDepIso = this.timeStringToIso(dep, f.departureTime, 0);
             const outArrIso = this.timeStringToIso(dep, f.arrivalTime, f.nextDay ? 1 : 0);
+            const outDuration = computeDurationMinutes(outDepIso, outArrIso, f.departureTime, f.arrivalTime);
             // For the return leg we have no scraped times in roundtrip mode,
             // so fall back to midnight on the return date.
             const inDepIso = this.timeStringToIso(ret, undefined, 0);
@@ -331,7 +392,7 @@ export class GoogleFlightsSource implements FlightSource {
                 arrival: { airport: config.destination, time: outArrIso },
                 airline: f.airline || 'Unknown',
                 flightNumber: 'N/A',
-                durationMinutes: 0,
+                durationMinutes: outDuration,
                 stops: stopCount,
               },
               inbound: {

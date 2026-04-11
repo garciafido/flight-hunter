@@ -277,5 +277,134 @@ describe('GoogleFlightsSource', () => {
       // goto should be called max 8 times
       expect(mockPage.goto.mock.calls.length).toBeLessThanOrEqual(8);
     });
+
+    it('computes outbound.durationMinutes from real scraped times', async () => {
+      const mockPage = makeMockPage([
+        {
+          price: 250,
+          airline: 'JetSMART',
+          stops: 'Nonstop',
+          departureTime: '8:40 AM',
+          arrivalTime: '1:00 PM',
+          nextDay: false,
+        },
+      ]);
+      const mockBrowser = makeMockBrowser(mockPage);
+      chromiumLaunchMock.mockResolvedValue(mockBrowser);
+
+      const source = new GoogleFlightsSource();
+      const results = await source.searchOneWay(makeConfig(), 0, makeLeg(), null);
+
+      expect(results.length).toBeGreaterThan(0);
+      // 8:40 AM → 1:00 PM = 4h 20m = 260 minutes
+      expect(results[0].outbound.durationMinutes).toBe(260);
+      // ISO times should reflect the wall-clock as UTC encoding
+      expect(results[0].outbound.departure.time).toMatch(/T08:40:00/);
+      expect(results[0].outbound.arrival.time).toMatch(/T13:00:00/);
+    });
+
+    it('leaves durationMinutes at 0 when scraped times are missing', async () => {
+      const mockPage = makeMockPage([
+        { price: 350, airline: 'LATAM', stops: 'Nonstop' },
+      ]);
+      const mockBrowser = makeMockBrowser(mockPage);
+      chromiumLaunchMock.mockResolvedValue(mockBrowser);
+
+      const source = new GoogleFlightsSource();
+      const results = await source.searchOneWay(makeConfig(), 0, makeLeg(), null);
+
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].outbound.durationMinutes).toBe(0);
+      // Times fall back to midnight UTC of the departure date
+      expect(results[0].outbound.departure.time).toMatch(/T00:00:00/);
+    });
+
+    it('handles next-day arrival (red-eye) by adding a day to arrival ISO', async () => {
+      const mockPage = makeMockPage([
+        {
+          price: 400,
+          airline: 'LATAM',
+          stops: '1 stop',
+          departureTime: '11:30 PM',
+          arrivalTime: '6:00 AM',
+          nextDay: true,
+        },
+      ]);
+      const mockBrowser = makeMockBrowser(mockPage);
+      chromiumLaunchMock.mockResolvedValue(mockBrowser);
+
+      const source = new GoogleFlightsSource();
+      const leg = makeLeg({
+        departureFrom: new Date('2026-07-25'),
+        departureTo: new Date('2026-07-25'),
+      });
+      const results = await source.searchOneWay(makeConfig(), 0, leg, null);
+
+      expect(results.length).toBeGreaterThan(0);
+      // 11:30 PM on 25th → 6:00 AM on 26th = 6h 30m = 390 minutes
+      expect(results[0].outbound.durationMinutes).toBe(390);
+      expect(results[0].outbound.departure.time).toContain('2026-07-25');
+      expect(results[0].outbound.arrival.time).toContain('2026-07-26');
+    });
+  });
+
+  describe('search (roundtrip) duration computation', () => {
+    let chromiumLaunchMock: ReturnType<typeof vi.fn>;
+
+    beforeEach(async () => {
+      const playwright = await import('playwright');
+      chromiumLaunchMock = vi.mocked(playwright.chromium.launch);
+    });
+
+    afterEach(() => {
+      vi.clearAllMocks();
+    });
+
+    function makeMockPage(evaluateResult: unknown = []) {
+      return {
+        goto: vi.fn().mockResolvedValue(undefined),
+        evaluate: vi.fn().mockResolvedValue(evaluateResult),
+        getByText: vi.fn().mockReturnValue({
+          isVisible: vi.fn().mockResolvedValue(false),
+          click: vi.fn().mockResolvedValue(undefined),
+        }),
+        waitForTimeout: vi.fn().mockResolvedValue(undefined),
+        waitForLoadState: vi.fn().mockResolvedValue(undefined),
+      };
+    }
+
+    function makeMockBrowser(page: ReturnType<typeof makeMockPage>) {
+      return {
+        newContext: vi.fn().mockResolvedValue({
+          newPage: vi.fn().mockResolvedValue(page),
+        }),
+        newPage: vi.fn().mockResolvedValue(page),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+    }
+
+    it('computes outbound.durationMinutes for roundtrip results', async () => {
+      const mockPage = makeMockPage([
+        {
+          price: 600,
+          airline: 'LATAM',
+          stops: 'Nonstop',
+          departureTime: '9:00 AM',
+          arrivalTime: '12:30 PM',
+          nextDay: false,
+        },
+      ]);
+      const mockBrowser = makeMockBrowser(mockPage);
+      chromiumLaunchMock.mockResolvedValue(mockBrowser);
+
+      const source = new GoogleFlightsSource();
+      const results = await source.search(makeConfig(), null);
+
+      expect(results.length).toBeGreaterThan(0);
+      // 9:00 AM → 12:30 PM = 3h 30m = 210 minutes
+      expect(results[0].outbound.durationMinutes).toBe(210);
+      // Inbound has no scraped times → midnight fallback → 0
+      expect(results[0].inbound.durationMinutes).toBe(0);
+    });
   });
 });
