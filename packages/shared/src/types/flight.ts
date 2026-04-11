@@ -40,6 +40,7 @@ export interface FlightResult {
   scrapedAt: Date;
   proxyRegion: ProxyRegion;
   legIndex?: number; // optional; 0 for roundtrip (default), leg index for split mode
+  planIndex?: number; // for stopoverPlan 'any' position: 0=start plan, 1=end plan
   // Currency fields (populated by scraper after currency conversion)
   priceOriginal?: number;
   currencyOriginal?: string;

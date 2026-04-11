@@ -34,6 +34,7 @@ export async function POST(request: Request) {
         active: true,
         mode: body.mode ?? 'roundtrip',
         legs: body.legs ?? null,
+        stopoverPlan: body.stopoverPlan ?? null,
       },
     });
     return NextResponse.json(search, { status: 201 });

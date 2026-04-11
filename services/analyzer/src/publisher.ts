@@ -102,8 +102,9 @@ export class Publisher {
     score: number;
     scoreBreakdown: ScoreBreakdown;
     alertLevel: AlertLevel;
+    plan?: { position: 'start' | 'end' | 'any'; airport: string; days: number };
   }): Promise<void> {
-    const { searchId, flightResultId, legs, totalPricePerPerson, score, scoreBreakdown, alertLevel } = opts;
+    const { searchId, flightResultId, legs, totalPricePerPerson, score, scoreBreakdown, alertLevel, plan } = opts;
     const firstLeg = legs[0];
     const lastLeg = legs[legs.length - 1];
 
@@ -135,6 +136,7 @@ export class Publisher {
           bookingUrl: l.bookingUrl,
         })),
         totalPrice: totalPricePerPerson,
+        ...(plan ? { plan } : {}),
       },
     };
 

@@ -14,6 +14,12 @@ export function formatTelegram(alert: AlertJob, searchName: string): string {
   if (combo) {
     const currency = flightSummary.currency;
     let text = `🚨 *${header}* — ${searchName}\n\n`;
+    if (combo.plan) {
+      const positionLabel =
+        combo.plan.position === 'start' ? 'al inicio' :
+        combo.plan.position === 'end' ? 'al final' : '';
+      text += `🏨 *Plan:* ${combo.plan.days}d en ${combo.plan.airport} ${positionLabel}\n`;
+    }
     text += `💰 *${currency} ${combo.totalPrice} total (combinación)*\n`;
     text += `⭐ Score: ${score}/100\n\n`;
 

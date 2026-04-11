@@ -1,5 +1,20 @@
 export type DestinationMode = 'single' | 'flexible';
 
+export type StopoverPlanPosition = 'start' | 'end' | 'any';
+
+export interface StopoverPlan {
+  airport: string;
+  minDays: number;
+  maxDays: number;
+  position: StopoverPlanPosition;
+  /**
+   * When false, the system also searches direct flights (without the
+   * extended stopover) and surfaces them as alternative alerts. When true
+   * or omitted, only combos that include the planned stopover are considered.
+   */
+  required?: boolean;
+}
+
 export type StopoverLeg = 'outbound' | 'inbound' | 'any';
 
 export interface StopoverConfig {
@@ -71,4 +86,5 @@ export interface SearchConfig {
   windowDuration?: number; // trip length in days
   windowFlexibility?: number; // ± days around windowDuration
   maxCombos?: number; // cap for split mode combos, defaults to 100
+  stopoverPlan?: StopoverPlan; // first-class extended stopover plan
 }

@@ -33,6 +33,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (body.active !== undefined) data.active = body.active;
     if (body.mode !== undefined) data.mode = body.mode;
     if (body.legs !== undefined) data.legs = body.legs;
+    if (body.stopoverPlan !== undefined) data.stopoverPlan = body.stopoverPlan;
     const search = await prisma.search.update({ where: { id }, data });
     return NextResponse.json(search);
   } catch (err) {

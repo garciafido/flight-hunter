@@ -32,6 +32,7 @@ model Search {
   windowDuration        Int?     @map("window_duration")
   windowFlexibility     Int      @default(0) @map("window_flexibility")
   maxCombos             Int      @default(100) @map("max_combos")
+  stopoverPlan          Json?    @map("stopover_plan")
   status            String    @default("active")
   snoozedUntil      DateTime? @map("snoozed_until") @db.Timestamptz
   digestEnabled     Boolean   @default(true) @map("digest_enabled")
@@ -87,6 +88,7 @@ model FlightResult {
   scoreBreakdown      Json?     @map("score_breakdown")
   alertLevel          String?   @map("alert_level")
   legIndex            Int       @default(0) @map("leg_index")
+  planIndex           Int       @default(0) @map("plan_index")
   scrapedAt           DateTime  @map("scraped_at") @db.Timestamptz
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
 

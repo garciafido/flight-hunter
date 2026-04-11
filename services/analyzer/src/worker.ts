@@ -104,10 +104,13 @@ export class AnalyzerWorker {
 
     // Detect deal at the leg/result level.
     // For SPLIT mode, individual legs MUST NOT trigger alerts because
-    // the user's price thresholds (max/target/dream) refer to the TOTAL
-    // trip cost. Only complete combos can trigger alerts in split mode.
+    // the user's price thresholds refer to the TOTAL trip cost.
+    // EXCEPTION: planIndex >= 99 means this is a "direct fallback" result
+    // from an OPTIONAL stopover plan — those represent a complete trip
+    // already, so they should fire alerts at the result level.
     const isSplitMode = (search as any).mode === 'split';
-    const alertLevel = isSplitMode
+    const isDirectFallback = (data.planIndex ?? 0) >= 99;
+    const alertLevel = (isSplitMode && !isDirectFallback)
       ? null
       : this.deps.dealDetector.detect(
           scoreResult.total,
@@ -137,10 +140,23 @@ export class AnalyzerWorker {
 
     // For split-mode searches, evaluate combos after saving each leg result
     const searchMode = (search as any).mode ?? 'roundtrip';
+    const stopoverPlan = (search as any).stopoverPlan;
     const searchLegs = (search as any).legs;
-    if (searchMode === 'split' && Array.isArray(searchLegs) && searchLegs.length > 0) {
+
+    if (searchMode === 'split' && stopoverPlan) {
+      // stopoverPlan mode: always 3 legs per plan
+      const plan = stopoverPlan as { position: string; airport: string; minDays: number; maxDays: number };
+      const planIndices = plan.position === 'any' ? [0, 1] : [0];
+      for (const planIndex of planIndices) {
+        try {
+          await this.evaluateCombos(data.searchId, 3, searchConfig, search as any, planIndex, plan);
+        } catch (err) {
+          console.error(`evaluateCombos(planIndex=${planIndex}) failed:`, err instanceof Error ? err.message : err);
+        }
+      }
+    } else if (searchMode === 'split' && Array.isArray(searchLegs) && searchLegs.length > 0) {
       try {
-        await this.evaluateCombos(data.searchId, searchLegs.length, searchConfig, search as any);
+        await this.evaluateCombos(data.searchId, searchLegs.length, searchConfig, search as any, 0, null);
       } catch (err) {
         console.error('evaluateCombos failed:', err instanceof Error ? err.message : err);
       }
@@ -152,15 +168,21 @@ export class AnalyzerWorker {
     legCount: number,
     searchConfig: SearchConfig,
     searchRecord: any,
+    planIndex: number,
+    stopoverPlan: { position: string; airport: string; minDays: number; maxDays: number } | null,
   ): Promise<void> {
     const maxCombos: number = (searchRecord as any).maxCombos ?? 100;
     const TOP_N = topNPerLeg(maxCombos, legCount);
 
-    // Fetch top N cheapest results per leg
+    // Fetch top N cheapest results per leg (filtered by planIndex when using stopoverPlan)
     const legResultArrays: FlightResult[][] = [];
     for (let i = 0; i < legCount; i++) {
+      const whereClause: any = { searchId, legIndex: i };
+      if (stopoverPlan) {
+        whereClause.planIndex = planIndex;
+      }
       const rows = await this.deps.prisma.flightResult.findMany({
-        where: { searchId, legIndex: i },
+        where: whereClause,
         orderBy: { pricePerPerson: 'asc' },
         take: TOP_N,
       });
@@ -241,6 +263,13 @@ export class AnalyzerWorker {
     // carries the full leg list for display.
     const firstLegId = (best.combo[0] as any).id as string | undefined;
     if (alertLevel && firstLegId) {
+      const planPayload = stopoverPlan
+        ? {
+            position: stopoverPlan.position as 'start' | 'end' | 'any',
+            airport: stopoverPlan.airport,
+            days: stopoverPlan.minDays,
+          }
+        : undefined;
       try {
         await this.deps.publisher.publishComboAlert({
           searchId,
@@ -250,6 +279,7 @@ export class AnalyzerWorker {
           score: best.score,
           scoreBreakdown: best.breakdown,
           alertLevel,
+          plan: planPayload,
         });
       } catch (err) {
         console.error('Failed to publish combo alert:', err instanceof Error ? err.message : err);
