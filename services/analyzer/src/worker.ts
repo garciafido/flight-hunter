@@ -275,6 +275,7 @@ export class AnalyzerWorker {
           scoreBreakdown: best.breakdown,
           alertLevel,
           waypoints: waypointPayload,
+          requireCarryOn: searchConfig.filters.requireCarryOn,
         });
       } catch (err) {
         console.error('Failed to publish combo alert:', err instanceof Error ? err.message : err);

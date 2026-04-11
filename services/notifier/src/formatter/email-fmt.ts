@@ -59,6 +59,8 @@ export function formatEmail(alert: AlertJob, searchName: string): EmailPayload {
     <h1>${levelLabel}: ${currency} ${totalPrice} total</h1>
     <p><strong>${searchName}</strong> — Combinación de vuelos separados</p>
     ${combo.waypoints && combo.waypoints.length > 0 ? `<p style="background:#eff6ff;border-left:4px solid #2563eb;padding:8px 12px;color:#1e40af;font-size:13px;">Itinerario: ${combo.waypoints.map((wp) => wp.type === 'stay' ? `<strong>${wp.airport}</strong> (${wp.minDays}-${wp.maxDays}d)` : `<strong>${wp.airport}</strong> (<${wp.maxHours}h)`).join(' · ')}</p>` : ''}
+    ${combo.carryOnEstimateUSD !== undefined && combo.carryOnEstimateUSD > 0 ? `<p style="font-size:13px;color:#475569;">🧳 +USD ${combo.carryOnEstimateUSD} carry-on (estimado, tarifa básica) → <strong>USD ${(Number(totalPrice) + combo.carryOnEstimateUSD).toLocaleString()}</strong></p>` : ''}
+    ${combo.argTaxEstimateUSD !== undefined ? `<p style="font-size:13px;color:#475569;">🇦🇷 con impuestos AR (PAIS 30% + RG 5232 45%): <strong>USD ${combo.argTaxEstimateUSD.toLocaleString()}</strong></p>` : ''}
     <p>Score: ${score}/100</p>
     ${legsHtml}
     <p class="breakdown">Desglose: precio=${scoreBreakdown.price} | horario=${scoreBreakdown.schedule} | stopover=${scoreBreakdown.stopover} | aerolínea=${scoreBreakdown.airline} | flex=${scoreBreakdown.flexibility}</p>

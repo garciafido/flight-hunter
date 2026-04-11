@@ -77,6 +77,8 @@ export const AlertJobSchema = z.object({
     legs: z.array(FlightSummarySchema.extend({
       // Optional flight duration in minutes (only set when the source had real times).
       durationMinutes: z.number().optional(),
+      // Worst-case carry-on cost estimate (USD), only when requireCarryOn=true.
+      carryOnEstimateUSD: z.number().optional(),
     })),
     totalPrice: z.number(),
     waypoints: z.array(z.object({
@@ -86,6 +88,11 @@ export const AlertJobSchema = z.object({
       maxDays: z.number().optional(),
       maxHours: z.number().optional(),
     })).optional(),
+    // Sum of carry-on estimates across all legs (USD), only when requireCarryOn=true.
+    carryOnEstimateUSD: z.number().optional(),
+    // Estimated AR-resident total: totalPrice * AR_TAX_MULTIPLIER (1.75).
+    // Always populated; UI decides whether/how to show it.
+    argTaxEstimateUSD: z.number().optional(),
   }).optional(),
 });
 

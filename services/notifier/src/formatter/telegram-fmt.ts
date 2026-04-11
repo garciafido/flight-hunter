@@ -23,6 +23,13 @@ export function formatTelegram(alert: AlertJob, searchName: string): string {
       text += `*Itinerario:* ${summary}\n`;
     }
     text += `💰 *${currency} ${combo.totalPrice} total (combinación)*\n`;
+    if (combo.carryOnEstimateUSD !== undefined && combo.carryOnEstimateUSD > 0) {
+      const withCarryOn = Number(combo.totalPrice) + combo.carryOnEstimateUSD;
+      text += `🧳 +USD ${combo.carryOnEstimateUSD} carry-on (estimado) → *USD ${withCarryOn}*\n`;
+    }
+    if (combo.argTaxEstimateUSD !== undefined) {
+      text += `🇦🇷 con impuestos AR (PAIS+RG5232): *USD ${combo.argTaxEstimateUSD}*\n`;
+    }
     text += `⭐ Score: ${score}/100\n\n`;
 
     combo.legs.forEach((leg, i) => {

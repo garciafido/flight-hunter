@@ -2,6 +2,7 @@ import type { Queue } from 'bullmq';
 import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { FlightResult, AlertLevel, ScoreBreakdown } from '@flight-hunter/shared';
 import type { AlertJob } from '@flight-hunter/shared';
+import { estimateCarryOnUSD, estimateArgentineTotalUSD } from '@flight-hunter/shared';
 import { PriceAggregator } from './aggregation/price-aggregator.js';
 
 export interface PublishPayload {
@@ -108,10 +109,21 @@ export class Publisher {
       maxDays?: number;
       maxHours?: number;
     }>;
+    /** When true, populate per-leg and total carry-on cost estimates. */
+    requireCarryOn?: boolean;
   }): Promise<void> {
-    const { searchId, flightResultId, legs, totalPricePerPerson, score, scoreBreakdown, alertLevel, waypoints } = opts;
+    const { searchId, flightResultId, legs, totalPricePerPerson, score, scoreBreakdown, alertLevel, waypoints, requireCarryOn } = opts;
     const firstLeg = legs[0];
     const lastLeg = legs[legs.length - 1];
+
+    // Per-leg carry-on estimates and totals (only when the user requested carry-on)
+    const perLegCarryOn = requireCarryOn
+      ? legs.map((l) => estimateCarryOnUSD(l.outbound.airline))
+      : undefined;
+    const totalCarryOn = perLegCarryOn?.reduce((a, b) => a + b, 0);
+
+    // Argentine total estimate is always populated; UI decides whether to show it.
+    const argTotal = estimateArgentineTotalUSD(totalPricePerPerson);
 
     const alertJob: AlertJob = {
       searchId,
@@ -130,7 +142,7 @@ export class Publisher {
         bookingUrl: firstLeg.bookingUrl,
       },
       combo: {
-        legs: legs.map((l) => ({
+        legs: legs.map((l, i) => ({
           price: l.totalPrice,
           currency: l.currency,
           airline: l.outbound.airline,
@@ -140,9 +152,12 @@ export class Publisher {
           arrivalTime: l.outbound.arrival.time,
           bookingUrl: l.bookingUrl,
           durationMinutes: l.outbound.durationMinutes,
+          ...(perLegCarryOn !== undefined ? { carryOnEstimateUSD: perLegCarryOn[i] } : {}),
         })),
         totalPrice: totalPricePerPerson,
         ...(waypoints ? { waypoints } : {}),
+        ...(totalCarryOn !== undefined ? { carryOnEstimateUSD: totalCarryOn } : {}),
+        argTaxEstimateUSD: argTotal,
       },
     };
 
