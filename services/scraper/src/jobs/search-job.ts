@@ -42,19 +42,39 @@ export class SearchJobProcessor {
     }
 
     const sequences = enumerateLegSequences(config.origin, config.waypoints);
+    const baseFrom = new Date(config.departureFrom);
+    const baseTo = new Date(config.departureTo);
 
-    // Collect unique (origin, destination) pairs across all sequences
-    const seen = new Set<string>();
-    const uniquePairs: Array<{ origin: string; destination: string }> = [];
+    // Compute per-pair date windows by walking each sequence and accumulating
+    // the min/max days of preceding waypoint gaps. A pair that appears in
+    // multiple sequences gets the union (earliest start, latest end).
+    const pairWindows = new Map<string, { origin: string; destination: string; from: Date; to: Date }>();
     for (const seq of sequences) {
-      for (const leg of seq.legs) {
+      let cumMin = 0;
+      let cumMax = 0;
+      for (let i = 0; i < seq.legs.length; i++) {
+        const leg = seq.legs[i];
         const key = `${leg.origin}→${leg.destination}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          uniquePairs.push(leg);
+        const legFrom = new Date(baseFrom);
+        legFrom.setUTCDate(legFrom.getUTCDate() + cumMin);
+        const legTo = new Date(baseTo);
+        legTo.setUTCDate(legTo.getUTCDate() + cumMax);
+        const existing = pairWindows.get(key);
+        if (existing) {
+          if (legFrom < existing.from) existing.from = legFrom;
+          if (legTo > existing.to) existing.to = legTo;
+        } else {
+          pairWindows.set(key, { origin: leg.origin, destination: leg.destination, from: legFrom, to: legTo });
+        }
+        // Accumulate the gap that follows this leg (i.e. the i-th gap), if any
+        const gap = seq.gapConstraints[i];
+        if (gap) {
+          cumMin += gap.minDays;
+          cumMax += gap.maxDays;
         }
       }
     }
+    const uniquePairs = Array.from(pairWindows.values());
 
     const regions = config.proxyRegions.length > 0 ? config.proxyRegions : ['default'];
     const oneWaySources = this.sources.filter(
@@ -69,8 +89,8 @@ export class SearchJobProcessor {
           const leg: SearchLegInput = {
             origin: pair.origin,
             destination: pair.destination,
-            departureFrom: new Date(config.departureFrom),
-            departureTo: new Date(config.departureTo),
+            departureFrom: pair.from,
+            departureTo: pair.to,
           };
           console.log(
             `  Source ${source.name} waypoint pair (${pair.origin}→${pair.destination}, region: ${region})...`,

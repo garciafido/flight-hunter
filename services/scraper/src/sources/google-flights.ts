@@ -59,6 +59,19 @@ export class GoogleFlightsSource implements FlightSource {
 
     /* v8 ignore start */
     const flights = await page.evaluate(() => {
+      // tsx/esbuild injects __name(fn, "name") helper calls around any nested
+      // function declaration or arrow assigned to a const, to preserve .name
+      // properties. The helper lives in the outer module scope and is NOT
+      // serialized into the browser context. We install no-ops via bracket
+      // access on globalThis BEFORE any nested function gets declared. We must
+      // not assign a const arrow here either (that would trigger __name on
+      // itself). Anonymous function expressions assigned via bracket access
+      // don't get wrapped because there's no binding name to preserve.
+      (globalThis as Record<string, unknown>)['__name'] = function (x: unknown) { return x; };
+      (globalThis as Record<string, unknown>)['__name2'] = (globalThis as Record<string, unknown>)['__name'];
+      (globalThis as Record<string, unknown>)['__name3'] = (globalThis as Record<string, unknown>)['__name'];
+      (globalThis as Record<string, unknown>)['__name4'] = (globalThis as Record<string, unknown>)['__name'];
+      (globalThis as Record<string, unknown>)['__name5'] = (globalThis as Record<string, unknown>)['__name'];
       const items: Array<{
         price: number;
         airline: string;
