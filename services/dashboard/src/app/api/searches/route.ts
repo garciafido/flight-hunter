@@ -17,7 +17,6 @@ const WaypointGapSchema = z.discriminatedUnion('type', [
 const WaypointSchema = z.object({
   airport: z.string().length(3),
   gap: WaypointGapSchema,
-  pin: z.enum(['first', 'last']).optional(),
   checkedBags: z.number().int().min(0).max(5).optional(),
   passengers: z.number().int().positive().max(9).optional(),
 });
@@ -46,13 +45,6 @@ const CreateSearchSchema = z.object({
   maxCombos: z.number().int().positive().optional(),
 });
 
-function validatePins(waypoints: z.infer<typeof WaypointSchema>[]): string | null {
-  const firsts = waypoints.filter((w) => w.pin === 'first').length;
-  const lasts = waypoints.filter((w) => w.pin === 'last').length;
-  if (firsts > 1) return 'Only one waypoint may be pinned as first';
-  if (lasts > 1) return 'Only one waypoint may be pinned as last';
-  return null;
-}
 
 export async function GET() {
   try {
@@ -77,10 +69,6 @@ export async function POST(request: Request) {
       );
     }
     const data = parsed.data;
-    const pinError = validatePins(data.waypoints);
-    if (pinError) {
-      return NextResponse.json({ error: pinError }, { status: 400 });
-    }
 
     const search = await prisma.search.create({
       data: {

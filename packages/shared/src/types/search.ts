@@ -7,7 +7,6 @@ export type WaypointGap =
 export interface Waypoint {
   airport: string;          // IATA code, e.g. 'LIM'
   gap: WaypointGap;
-  pin?: 'first' | 'last';   // optional position pin
   /**
    * Checked bags per passenger to bring on the leg ARRIVING at this waypoint.
    * Default 0. Used by the analyzer to compute baggage cost per leg.

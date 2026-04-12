@@ -19,7 +19,6 @@ export interface WaypointFormEntry {
   minDays: number;
   maxDays: number;
   maxHours: number;
-  pin: 'first' | 'last' | 'none';
   /** Checked bags to bring on the leg arriving at this waypoint. Default 0. */
   checkedBags: number;
   /** Override passenger count for this leg. Empty string = inherit global. */
@@ -64,7 +63,6 @@ function newWaypointEntry(): WaypointFormEntry {
     minDays: 1,
     maxDays: 7,
     maxHours: 6,
-    pin: 'none',
     checkedBags: 0,
     passengers: '',
   };
@@ -98,7 +96,6 @@ export function searchRowToFormState(row: any): FormState {
           minDays: wp.gap?.minDays ?? 1,
           maxDays: wp.gap?.maxDays ?? 7,
           maxHours: wp.gap?.maxHours ?? 6,
-          pin: wp.pin === 'first' || wp.pin === 'last' ? wp.pin : 'none',
           checkedBags: wp.checkedBags ?? 0,
           passengers: wp.passengers ?? '',
         }))
@@ -220,16 +217,6 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
       setError('Agregá al menos una parada');
       return;
     }
-    const firsts = form.waypoints.filter(w => w.pin === 'first').length;
-    const lasts = form.waypoints.filter(w => w.pin === 'last').length;
-    if (firsts > 1) {
-      setError('Solo una parada puede ser pineada como primera');
-      return;
-    }
-    if (lasts > 1) {
-      setError('Solo una parada puede ser pineada como última');
-      return;
-    }
     for (const wp of form.waypoints) {
       if (wp.airport.length !== 3) {
         setError(`Aeropuerto inválido: "${wp.airport}" (debe ser código IATA de 3 letras)`);
@@ -273,7 +260,6 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
           gap: wp.type === 'stay'
             ? { type: 'stay' as const, minDays: Number(wp.minDays), maxDays: Number(wp.maxDays) }
             : { type: 'connection' as const, maxHours: Number(wp.maxHours) },
-          ...(wp.pin !== 'none' ? { pin: wp.pin } : {}),
           checkedBags: Number(wp.checkedBags) || 0,
           ...(wp.passengers !== '' ? { passengers: Number(wp.passengers) } : {}),
         })),
@@ -493,21 +479,8 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
                 </div>
               )}
 
-              {/* Pin select + checked bags */}
+              {/* Checked bags + passengers */}
               <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end' }}>
-                <div>
-                  <label style={labelStyle}>Pin</label>
-                  <select
-                    data-testid="waypoint-pin"
-                    value={wp.pin}
-                    onChange={e => updateWaypoint(i, { pin: e.target.value as 'first' | 'last' | 'none' })}
-                    style={{ ...inputStyle, width: 140 }}
-                  >
-                    <option value="none">Ninguno</option>
-                    <option value="first">Primera</option>
-                    <option value="last">Última</option>
-                  </select>
-                </div>
                 <div>
                   <label style={labelStyle}>Valijas</label>
                   <input
@@ -580,7 +553,7 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
         </div>
 
         <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, fontStyle: 'italic' }}>
-          El motor probará todas las permutaciones que respeten los pins.
+          El viaje sigue el orden de arriba a abajo. Para probar otro orden, duplicá la búsqueda y reordená las paradas.
         </p>
       </div>
 

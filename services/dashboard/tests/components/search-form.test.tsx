@@ -160,29 +160,6 @@ describe('SearchForm', () => {
     });
   });
 
-  it('rejects two waypoints pinned as first', async () => {
-    render(<SearchForm />);
-    fillBasics();
-    fillFirstWaypoint('LIM');
-
-    // Insert a second waypoint
-    fireEvent.click(screen.getAllByText('+ Insertar parada')[0]);
-    const airports = document.querySelectorAll('input[data-testid="waypoint-airport"]');
-    fireEvent.change(airports[1] as HTMLInputElement, { target: { value: 'CUZ' } });
-
-    // Pin both as 'first'
-    const pinSelects = document.querySelectorAll('select[data-testid="waypoint-pin"]') as NodeListOf<HTMLSelectElement>;
-    fireEvent.change(pinSelects[0], { target: { value: 'first' } });
-    fireEvent.change(pinSelects[1], { target: { value: 'first' } });
-
-    fireEvent.click(screen.getByRole('button', { name: /crear búsqueda/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText(/Solo una parada puede ser pineada como primera/)).toBeDefined();
-    });
-    expect(createSearch).not.toHaveBeenCalled();
-  });
-
   it('rejects an invalid airport code', async () => {
     render(<SearchForm />);
     fillBasics();

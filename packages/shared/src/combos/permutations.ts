@@ -17,18 +17,6 @@ export interface LegSequence {
   gapConstraints: GapConstraint[];  // length = waypoints.length
 }
 
-function permute<T>(arr: T[]): T[][] {
-  if (arr.length <= 1) return [arr];
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i++) {
-    const rest = [...arr.slice(0, i), ...arr.slice(i + 1)];
-    for (const sub of permute(rest)) {
-      out.push([arr[i], ...sub]);
-    }
-  }
-  return out;
-}
-
 function gapFromWaypoint(wp: Waypoint): GapConstraint {
   if (wp.gap.type === 'stay') {
     return { minDays: wp.gap.minDays, maxDays: wp.gap.maxDays };
@@ -40,6 +28,16 @@ function gapFromWaypoint(wp: Waypoint): GapConstraint {
   };
 }
 
+/**
+ * Build the leg sequence from waypoints IN THE ORDER GIVEN.
+ *
+ * The visual order in the form IS the trip order — no permutations.
+ * If the user wants to try a different order, they duplicate the search
+ * and reorder the waypoints manually.
+ *
+ * Returns a single-element array for backwards compatibility with callers
+ * that iterate over sequences.
+ */
 export function enumerateLegSequences(
   origin: string,
   waypoints: Waypoint[],
@@ -52,31 +50,16 @@ export function enumerateLegSequences(
     throw new Error(`enumerateLegSequences: too many waypoints (${waypoints.length} > ${maxWaypoints})`);
   }
 
-  const firstPinned = waypoints.filter((w) => w.pin === 'first');
-  const lastPinned = waypoints.filter((w) => w.pin === 'last');
-  if (firstPinned.length > 1) {
-    throw new Error('enumerateLegSequences: multiple waypoints pinned as first');
+  // Build legs: origin → wp[0], wp[0] → wp[1], ..., wp[N-1] → origin
+  const legs: LegPair[] = [];
+  let prev = origin;
+  for (const wp of waypoints) {
+    legs.push({ origin: prev, destination: wp.airport });
+    prev = wp.airport;
   }
-  if (lastPinned.length > 1) {
-    throw new Error('enumerateLegSequences: multiple waypoints pinned as last');
-  }
+  legs.push({ origin: prev, destination: origin });
 
-  const free = waypoints.filter((w) => w.pin === undefined);
-  const firsts = firstPinned;
-  const lasts = lastPinned;
+  const gapConstraints = waypoints.map(gapFromWaypoint);
 
-  const freePerms = free.length === 0 ? [[]] : permute(free);
-
-  return freePerms.map((perm) => {
-    const ordered: Waypoint[] = [...firsts, ...perm, ...lasts];
-    const legs: LegPair[] = [];
-    let prev = origin;
-    for (const wp of ordered) {
-      legs.push({ origin: prev, destination: wp.airport });
-      prev = wp.airport;
-    }
-    legs.push({ origin: prev, destination: origin });
-    const gapConstraints = ordered.map(gapFromWaypoint);
-    return { legs, gapConstraints };
-  });
+  return [{ legs, gapConstraints }];
 }
