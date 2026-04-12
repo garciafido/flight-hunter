@@ -21,6 +21,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (body.origin !== undefined) data.origin = body.origin;
     if (body.departureFrom !== undefined) data.departureFrom = new Date(body.departureFrom);
     if (body.departureTo !== undefined) data.departureTo = new Date(body.departureTo);
+    if (body.departureDates !== undefined) data.departureDates = Array.isArray(body.departureDates) ? body.departureDates.map((d: string) => new Date(d)) : [];
     if (body.passengers !== undefined) data.passengers = body.passengers;
     if (body.waypoints !== undefined) data.waypoints = body.waypoints;
     if (body.maxConnectionHours !== undefined) data.maxConnectionHours = body.maxConnectionHours;

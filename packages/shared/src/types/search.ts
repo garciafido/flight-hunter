@@ -51,6 +51,10 @@ export interface SearchConfig {
   origin: string;             // IATA, e.g. 'BUE'
   departureFrom: Date;
   departureTo: Date;
+  /** Specific departure dates (alternative to the from/to range). When set,
+   *  the scraper uses min/max as the effective range but only these dates
+   *  matter for the first-leg analysis. ISO date strings. */
+  departureDates?: string[];
   passengers: number;
   waypoints: Waypoint[];      // 1+ stops; trip always returns to origin
   maxConnectionHours: number; // global default for connection gaps

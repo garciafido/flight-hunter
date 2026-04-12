@@ -30,8 +30,10 @@ export interface FormState {
   name: string;
   origin: string;
   passengers: number;
+  departureDateMode: 'range' | 'list';
   departureFrom: string;
   departureTo: string;
+  departureDatesText: string; // comma-separated dates for list mode
   maxConnectionHours: number;
   returnBy: string; // ISO date or empty string
   waypoints: WaypointFormEntry[];
@@ -81,11 +83,15 @@ export function searchRowToFormState(row: any): FormState {
     name: row.name ?? '',
     origin: row.origin ?? '',
     passengers: row.passengers ?? 1,
+    departureDateMode: Array.isArray(row.departureDates) && row.departureDates.length > 0 ? 'list' : 'range',
     departureFrom: typeof row.departureFrom === 'string'
       ? row.departureFrom.slice(0, 10)
       : '',
     departureTo: typeof row.departureTo === 'string'
       ? row.departureTo.slice(0, 10)
+      : '',
+    departureDatesText: Array.isArray(row.departureDates)
+      ? row.departureDates.map((d: string) => (typeof d === 'string' ? d.slice(0, 10) : '')).join(', ')
       : '',
     maxConnectionHours: row.maxConnectionHours ?? 6,
     returnBy: typeof row.returnBy === 'string' ? row.returnBy.slice(0, 10) : '',
@@ -123,8 +129,10 @@ const DEFAULT_FORM_STATE: FormState = {
   name: '',
   origin: '',
   passengers: 1,
+  departureDateMode: 'range',
   departureFrom: '',
   departureTo: '',
+  departureDatesText: '',
   maxConnectionHours: 6,
   returnBy: '',
   waypoints: [],
@@ -244,13 +252,35 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
         requireCarryOn: form.requireCarryOn,
       };
 
+      // Parse departure dates based on mode
+      let departureFrom = form.departureFrom;
+      let departureTo = form.departureTo;
+      let departureDates: string[] | undefined;
+
+      if (form.departureDateMode === 'list') {
+        const dates = form.departureDatesText
+          .split(',')
+          .map(s => s.trim())
+          .filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s))
+          .sort();
+        if (dates.length === 0) {
+          setError('Ingresá al menos una fecha en el listado');
+          setLoading(false);
+          return;
+        }
+        departureDates = dates;
+        departureFrom = dates[0];
+        departureTo = dates[dates.length - 1];
+      }
+
       const payload = {
         active: form.active,
         name: form.name,
         origin: form.origin,
         passengers: Number(form.passengers),
-        departureFrom: form.departureFrom,
-        departureTo: form.departureTo,
+        departureFrom,
+        departureTo,
+        ...(departureDates ? { departureDates } : {}),
         maxConnectionHours: Number(form.maxConnectionHours),
         ...(form.returnBy ? { returnBy: form.returnBy } : {}),
         returnCheckedBags: Number(form.returnCheckedBags),
@@ -362,15 +392,53 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
             <input name="passengers" value={form.passengers} onChange={handleChange} type="number" min="1" max="9" required style={inputStyle} />
           </div>
         </div>
-        <div style={rowStyle}>
-          <div>
-            <label style={labelStyle}>Salida desde</label>
-            <input name="departureFrom" value={form.departureFrom} onChange={handleChange} type="date" required style={inputStyle} />
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name="departureDateMode"
+                value="range"
+                checked={form.departureDateMode === 'range'}
+                onChange={() => setForm(prev => ({ ...prev, departureDateMode: 'range' }))}
+              />
+              Rango de fechas
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name="departureDateMode"
+                value="list"
+                checked={form.departureDateMode === 'list'}
+                onChange={() => setForm(prev => ({ ...prev, departureDateMode: 'list' }))}
+              />
+              Fechas específicas
+            </label>
           </div>
-          <div>
-            <label style={labelStyle}>Salida hasta</label>
-            <input name="departureTo" value={form.departureTo} onChange={handleChange} type="date" required style={inputStyle} />
-          </div>
+          {form.departureDateMode === 'range' ? (
+            <div style={rowStyle}>
+              <div>
+                <label style={labelStyle}>Salida desde</label>
+                <input name="departureFrom" value={form.departureFrom} onChange={handleChange} type="date" required style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Salida hasta</label>
+                <input name="departureTo" value={form.departureTo} onChange={handleChange} type="date" required style={inputStyle} />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label style={labelStyle}>Fechas de salida (separadas por coma, formato YYYY-MM-DD)</label>
+              <input
+                name="departureDatesText"
+                value={form.departureDatesText}
+                onChange={handleChange}
+                placeholder="2026-07-25, 2026-07-28, 2026-07-31"
+                style={inputStyle}
+              />
+              <span style={{ fontSize: 11, color: '#9ca3af' }}>El scraper buscará solo en estas fechas</span>
+            </div>
+          )}
         </div>
         <div style={rowStyle}>
           <div>

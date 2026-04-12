@@ -27,6 +27,7 @@ const CreateSearchSchema = z.object({
   passengers: z.number().int().positive(),
   departureFrom: z.string(),
   departureTo: z.string(),
+  departureDates: z.array(z.string()).optional(),
   waypoints: z.array(WaypointSchema).min(1).max(6),
   maxConnectionHours: z.number().int().positive().default(6),
   returnCheckedBags: z.number().int().min(0).max(5).optional(),
@@ -77,6 +78,9 @@ export async function POST(request: Request) {
         origin: data.origin,
         departureFrom: new Date(data.departureFrom),
         departureTo: new Date(data.departureTo),
+        ...(data.departureDates && data.departureDates.length > 0
+          ? { departureDates: data.departureDates.map((d: string) => new Date(d)) }
+          : {}),
         passengers: data.passengers,
         waypoints: data.waypoints as object,
         maxConnectionHours: data.maxConnectionHours,
