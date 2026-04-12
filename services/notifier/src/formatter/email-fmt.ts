@@ -64,6 +64,7 @@ export function formatEmail(alert: AlertJob, searchName: string): EmailPayload {
     <p>Score: ${score}/100</p>
     ${legsHtml}
     <p class="breakdown">Desglose: precio=${scoreBreakdown.price} | horario=${scoreBreakdown.schedule} | stopover=${scoreBreakdown.stopover} | aerolínea=${scoreBreakdown.airline} | flex=${scoreBreakdown.flexibility}</p>
+    <p style="font-size:11px;color:#94a3b8;font-style:italic;margin-top:16px;">Fuente: Google Flights · precio incluye impuestos y tasas aeroportuarias obligatorias</p>
   </div>
 </body>
 </html>`;

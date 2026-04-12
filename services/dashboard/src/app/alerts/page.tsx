@@ -161,6 +161,8 @@ export default function AlertsPage() {
       if (anyHasTime) {
         lines.push('_Horarios en hora local de cada aeropuerto_');
       }
+      lines.push('');
+      lines.push('_Fuente: Google Flights · incluye impuestos y tasas aeroportuarias_');
       return lines.join('\n').trimEnd();
     }
 
@@ -446,6 +448,9 @@ export default function AlertsPage() {
                   <strong style={{ fontSize: 15, color: '#0f172a' }}>
                     {displayCurrency} {Number(displayPrice ?? 0).toLocaleString()}
                   </strong>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>
+                  Fuente: Google Flights · precio incluye impuestos y tasas aeroportuarias obligatorias
                 </div>
               </div>
             )}
