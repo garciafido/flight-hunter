@@ -267,6 +267,14 @@ export class AnalyzerWorker {
     const firstLegId = (best.combo[0] as any).id as string | undefined;
     if (alertLevel && firstLegId) {
       try {
+        // Build per-arrival-airport checked-bag map from the waypoint config.
+        const checkedBagsByArrival: Record<string, number> = {};
+        for (const wp of waypoints) {
+          if (wp.checkedBags && wp.checkedBags > 0) {
+            checkedBagsByArrival[wp.airport] = wp.checkedBags;
+          }
+        }
+
         await this.deps.publisher.publishComboAlert({
           searchId,
           flightResultId: firstLegId,
@@ -277,7 +285,7 @@ export class AnalyzerWorker {
           alertLevel,
           waypoints: waypointPayload,
           requireCarryOn: searchConfig.filters.requireCarryOn,
-          outboundCheckedBags: (searchRecord as any).outboundCheckedBags ?? 0,
+          checkedBagsByArrival,
           returnCheckedBags: (searchRecord as any).returnCheckedBags ?? 0,
         });
       } catch (err) {

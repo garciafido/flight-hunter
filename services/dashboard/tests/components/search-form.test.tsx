@@ -132,6 +132,7 @@ describe('SearchForm', () => {
         {
           airport: 'LIM',
           gap: { type: 'stay', minDays: 3, maxDays: 4 },
+          checkedBags: 0,
         },
       ]);
     });
@@ -154,6 +155,7 @@ describe('SearchForm', () => {
       expect(payload.waypoints[0]).toEqual({
         airport: 'GRU',
         gap: { type: 'connection', maxHours: 5 },
+        checkedBags: 0,
       });
     });
   });

@@ -18,11 +18,10 @@ async function main() {
       departureTo: new Date('2026-07-31T00:00:00.000Z'),
       maxConnectionHours: 6,
       waypoints: [
-        { airport: 'LIM', gap: { type: 'stay', minDays: 3, maxDays: 4 } },
-        { airport: 'CUZ', gap: { type: 'stay', minDays: 7, maxDays: 10 } },
+        { airport: 'LIM', gap: { type: 'stay', minDays: 3, maxDays: 4 }, checkedBags: 0 },
+        { airport: 'CUZ', gap: { type: 'stay', minDays: 7, maxDays: 10 }, checkedBags: 0 },
       ],
-      // Voy sin valija despachada, vuelvo con una.
-      outboundCheckedBags: 0,
+      // Voy sin valija despachada en los tramos de ida; vuelvo con una al regreso a BUE.
       returnCheckedBags: 1,
       proxyRegions: ['CL', 'AR'],
       scanIntervalMin: 5,

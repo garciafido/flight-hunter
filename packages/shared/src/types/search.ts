@@ -8,6 +8,11 @@ export interface Waypoint {
   airport: string;          // IATA code, e.g. 'LIM'
   gap: WaypointGap;
   pin?: 'first' | 'last';   // optional position pin
+  /**
+   * Checked bags per passenger to bring on the leg ARRIVING at this waypoint.
+   * Default 0. Used by the analyzer to compute baggage cost per leg.
+   */
+  checkedBags?: number;
 }
 
 export interface TimeRange {
@@ -45,10 +50,8 @@ export interface SearchConfig {
   passengers: number;
   waypoints: Waypoint[];      // 1+ stops; trip always returns to origin
   maxConnectionHours: number; // global default for connection gaps
-  // Checked bags per passenger on legs LEAVING the origin (everything before
-  // the final return-to-origin leg). Defaults to 0 = no checked bags.
-  outboundCheckedBags?: number;
   // Checked bags per passenger on the FINAL leg back to origin.
+  // (Outbound bags are now configured per-waypoint via Waypoint.checkedBags.)
   returnCheckedBags?: number;
   proxyRegions: ProxyRegion[];
   scanIntervalMin: number;

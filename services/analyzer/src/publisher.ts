@@ -111,14 +111,18 @@ export class Publisher {
     }>;
     /** When true, populate per-leg and total carry-on cost estimates. */
     requireCarryOn?: boolean;
-    /** Checked bags per passenger on outbound (non-final) legs. */
-    outboundCheckedBags?: number;
-    /** Checked bags per passenger on the final return leg. */
+    /**
+     * Per-arrival-airport checked bag counts. The leg ARRIVING at airport X
+     * gets `checkedBagsByArrival[X]` bags (× airline fee × pax).
+     */
+    checkedBagsByArrival?: Record<string, number>;
+    /** Checked bags on the final return leg back to origin. */
     returnCheckedBags?: number;
   }): Promise<void> {
     const {
       searchId, flightResultId, legs, totalPricePerPerson, score, scoreBreakdown,
-      alertLevel, waypoints, requireCarryOn, outboundCheckedBags = 0,
+      alertLevel, waypoints, requireCarryOn,
+      checkedBagsByArrival = {},
       returnCheckedBags = 0,
     } = opts;
     const firstLeg = legs[0];
@@ -133,11 +137,15 @@ export class Publisher {
       : undefined;
     const totalCarryOn = perLegCarryOn?.reduce((a, b) => a + b, 0);
 
-    // Per-leg checked-bag estimate. Outbound bags apply to all legs except
-    // the last; return bags only apply to the last.
+    // Per-leg checked-bag estimate. The leg arriving at waypoint X uses
+    // `waypoint[X].checkedBags`; the final return leg (arriving at origin)
+    // uses `returnCheckedBags`.
     const lastIdx = legs.length - 1;
     const perLegCheckedBag = legs.map((l, i) => {
-      const bags = i === lastIdx ? returnCheckedBags : outboundCheckedBags;
+      const arrivalAirport = l.outbound.arrival.airport;
+      const bags = i === lastIdx
+        ? returnCheckedBags
+        : (checkedBagsByArrival[arrivalAirport] ?? 0);
       if (bags === 0) return 0;
       return estimateCheckedBagUSD(l.outbound.airline) * bags;
     });

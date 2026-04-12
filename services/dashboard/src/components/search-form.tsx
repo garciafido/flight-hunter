@@ -20,6 +20,8 @@ export interface WaypointFormEntry {
   maxDays: number;
   maxHours: number;
   pin: 'first' | 'last' | 'none';
+  /** Checked bags to bring on the leg arriving at this waypoint. Default 0. */
+  checkedBags: number;
 }
 
 export interface FormState {
@@ -35,8 +37,8 @@ export interface FormState {
   maxUnplannedStops: number;
   maxTotalTravelHours: number; // 0 = unlimited
   airlineBlacklist: string;     // comma-separated, parsed to string[] on submit
-  // Baggage (per passenger, per direction)
-  outboundCheckedBags: number;
+  // Checked bags on the final return leg (per passenger).
+  // Outbound bags are configured per-waypoint via WaypointFormEntry.checkedBags.
   returnCheckedBags: number;
   // Alerts
   scoreThresholdInfo: number;
@@ -59,6 +61,7 @@ function newWaypointEntry(): WaypointFormEntry {
     maxDays: 7,
     maxHours: 6,
     pin: 'none',
+    checkedBags: 0,
   };
 }
 
@@ -90,13 +93,13 @@ export function searchRowToFormState(row: any): FormState {
           maxDays: wp.gap?.maxDays ?? 7,
           maxHours: wp.gap?.maxHours ?? 6,
           pin: wp.pin === 'first' || wp.pin === 'last' ? wp.pin : 'none',
+          checkedBags: wp.checkedBags ?? 0,
         }))
       : [newWaypointEntry()],
     requireCarryOn: filters.requireCarryOn ?? false,
     maxUnplannedStops: filters.maxUnplannedStops ?? 1,
     maxTotalTravelHours: filters.maxTotalTravelTime ?? 0,
     airlineBlacklist: Array.isArray(filters.airlineBlacklist) ? filters.airlineBlacklist.join(', ') : '',
-    outboundCheckedBags: row.outboundCheckedBags ?? 0,
     returnCheckedBags: row.returnCheckedBags ?? 0,
     scoreThresholdInfo: alertConfig.scoreThresholds?.info ?? 30,
     scoreThresholdGood: alertConfig.scoreThresholds?.good ?? 60,
@@ -122,7 +125,6 @@ const DEFAULT_FORM_STATE: FormState = {
   maxUnplannedStops: 1,
   maxTotalTravelHours: 0,
   airlineBlacklist: '',
-  outboundCheckedBags: 0,
   returnCheckedBags: 0,
   scoreThresholdInfo: 30,
   scoreThresholdGood: 60,
@@ -253,7 +255,6 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
         departureFrom: form.departureFrom,
         departureTo: form.departureTo,
         maxConnectionHours: Number(form.maxConnectionHours),
-        outboundCheckedBags: Number(form.outboundCheckedBags),
         returnCheckedBags: Number(form.returnCheckedBags),
         waypoints: form.waypoints.map(wp => ({
           airport: wp.airport,
@@ -261,6 +262,7 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
             ? { type: 'stay' as const, minDays: Number(wp.minDays), maxDays: Number(wp.maxDays) }
             : { type: 'connection' as const, maxHours: Number(wp.maxHours) },
           ...(wp.pin !== 'none' ? { pin: wp.pin } : {}),
+          checkedBags: Number(wp.checkedBags) || 0,
         })),
         filters,
         alertConfig: {
@@ -457,19 +459,33 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
                 </div>
               )}
 
-              {/* Pin select */}
-              <div>
-                <label style={labelStyle}>Pin</label>
-                <select
-                  data-testid="waypoint-pin"
-                  value={wp.pin}
-                  onChange={e => updateWaypoint(i, { pin: e.target.value as 'first' | 'last' | 'none' })}
-                  style={{ ...inputStyle, width: 140 }}
-                >
-                  <option value="none">Ninguno</option>
-                  <option value="first">Primera</option>
-                  <option value="last">Última</option>
-                </select>
+              {/* Pin select + checked bags */}
+              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end' }}>
+                <div>
+                  <label style={labelStyle}>Pin</label>
+                  <select
+                    data-testid="waypoint-pin"
+                    value={wp.pin}
+                    onChange={e => updateWaypoint(i, { pin: e.target.value as 'first' | 'last' | 'none' })}
+                    style={{ ...inputStyle, width: 140 }}
+                  >
+                    <option value="none">Ninguno</option>
+                    <option value="first">Primera</option>
+                    <option value="last">Última</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Valijas que llevo</label>
+                  <input
+                    type="number"
+                    data-testid="waypoint-checkedbags"
+                    min="0"
+                    max="5"
+                    value={wp.checkedBags}
+                    onChange={e => updateWaypoint(i, { checkedBags: Number(e.target.value) })}
+                    style={{ ...inputStyle, width: 80 }}
+                  />
+                </div>
               </div>
             </div>
             <div style={connectorStyle} />
@@ -482,8 +498,23 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
         ))}
 
         <div style={connectorStyle} />
-        {/* Return anchor */}
-        <div style={waypointAnchorStyle}>[REGRESO] {form.origin || '???'}</div>
+        {/* Return anchor — also carries the return-leg checked-bag count */}
+        <div style={{ ...waypointAnchorStyle, paddingBottom: 12 }}>
+          <div>[REGRESO] {form.origin || '???'}</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 8, fontSize: 12, fontWeight: 500 }}>
+            <span>Valijas en el regreso:</span>
+            <input
+              type="number"
+              data-testid="return-checkedbags"
+              name="returnCheckedBags"
+              min="0"
+              max="5"
+              value={form.returnCheckedBags}
+              onChange={handleChange}
+              style={{ ...inputStyle, width: 60, padding: '2px 6px' }}
+            />
+          </div>
+        </div>
 
         <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, fontStyle: 'italic' }}>
           El motor probará todas las permutaciones que respeten los pins.
@@ -617,42 +648,9 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
           />
         </div>
 
-        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px dashed #e5e7eb' }}>
-          <div style={{ fontSize: 13, color: '#475569', marginBottom: 8, fontWeight: 600 }}>
-            Equipaje despachado (por persona)
-          </div>
-          <div style={rowStyle}>
-            <div>
-              <label style={labelStyle}>Valijas a la ida</label>
-              <input
-                name="outboundCheckedBags"
-                data-testid="filter-outbound-bags"
-                value={form.outboundCheckedBags}
-                onChange={handleChange}
-                type="number"
-                min="0"
-                max="5"
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Valijas a la vuelta</label>
-              <input
-                name="returnCheckedBags"
-                data-testid="filter-return-bags"
-                value={form.returnCheckedBags}
-                onChange={handleChange}
-                type="number"
-                min="0"
-                max="5"
-                style={inputStyle}
-              />
-            </div>
-          </div>
-          <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, fontStyle: 'italic' }}>
-            Las valijas a la ida aplican a todos los tramos antes del regreso al origen. La de vuelta solo al último tramo. Costo estimado por aerolínea, configurable en /system.
-          </p>
-        </div>
+        <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 8, fontStyle: 'italic' }}>
+          El equipaje despachado se configura por tramo en el itinerario de arriba. El carry-on aplica a todos los tramos del viaje. Costo estimado por aerolínea, editable en /system.
+        </p>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

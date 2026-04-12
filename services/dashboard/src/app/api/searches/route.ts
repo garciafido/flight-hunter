@@ -18,6 +18,7 @@ const WaypointSchema = z.object({
   airport: z.string().length(3),
   gap: WaypointGapSchema,
   pin: z.enum(['first', 'last']).optional(),
+  checkedBags: z.number().int().min(0).max(5).optional(),
 });
 
 const CreateSearchSchema = z.object({
@@ -28,7 +29,6 @@ const CreateSearchSchema = z.object({
   departureTo: z.string(),
   waypoints: z.array(WaypointSchema).min(1).max(6),
   maxConnectionHours: z.number().int().positive().default(6),
-  outboundCheckedBags: z.number().int().min(0).max(5).optional(),
   returnCheckedBags: z.number().int().min(0).max(5).optional(),
   filters: z.any(),
   alertConfig: z.any(),
@@ -89,7 +89,6 @@ export async function POST(request: Request) {
         passengers: data.passengers,
         waypoints: data.waypoints as object,
         maxConnectionHours: data.maxConnectionHours,
-        ...(data.outboundCheckedBags !== undefined ? { outboundCheckedBags: data.outboundCheckedBags } : {}),
         ...(data.returnCheckedBags !== undefined ? { returnCheckedBags: data.returnCheckedBags } : {}),
         filters: data.filters,
         alertConfig: data.alertConfig,
