@@ -155,15 +155,28 @@ export function ComboTimeline({ legs }: Props) {
           {leg.bookingUrl && (
             <>
               {' · '}
-              <a
-                href={leg.bookingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: '#2563eb', textDecoration: 'underline' }}
-                title={`Buscar en Google Flights: ${leg.airline ?? 'vuelo'} a las ${dep?.hhmm ?? ''}`}
-              >
-                buscar en GF
-              </a>
+              {leg.bookingUrl.includes('/booking') || !leg.bookingUrl.includes('google.com/travel/flights?q=') ? (
+                <>
+                  <a
+                    href={leg.bookingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: '#2563eb', textDecoration: 'underline', fontWeight: 600 }}
+                  >
+                    reservar
+                  </a>
+                </>
+              ) : (
+                <a
+                  href={leg.bookingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#2563eb', textDecoration: 'underline' }}
+                  title={`Buscar en Google Flights: ${leg.airline ?? 'vuelo'} a las ${dep?.hhmm ?? ''}`}
+                >
+                  buscar en GF
+                </a>
+              )}
             </>
           )}
         </span>

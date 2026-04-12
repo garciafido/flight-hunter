@@ -249,7 +249,7 @@ describe('ComboTimeline', () => {
       },
     ];
     render(<ComboTimeline legs={legs} />);
-    const link = screen.getByText('buscar en GF') as HTMLAnchorElement;
+    const link = screen.getByText('reservar') as HTMLAnchorElement;
     expect(link.tagName).toBe('A');
     expect(link.getAttribute('href')).toBe('https://example.com/booking/abc');
   });

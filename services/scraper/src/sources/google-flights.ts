@@ -239,6 +239,79 @@ export class GoogleFlightsSource implements FlightSource {
     return d.toISOString();
   }
 
+  /**
+   * Best-effort: click on flight listing rows to extract direct booking URLs.
+   * Returns a map of `price-airline` → bookingUrl. Falls back gracefully if
+   * the page structure doesn't match (Google changes DOM frequently).
+   */
+  private async extractBookingLinks(
+    page: import('playwright').Page,
+    flights: Array<{ price: number; airline: string }>,
+    maxClicks = 5,
+  ): Promise<Map<string, string>> {
+    const links = new Map<string, string>();
+    try {
+      // Google Flights listing rows are typically <li> elements or divs
+      // with role="listitem" inside the results container.
+      const rows = await page.locator('li[data-resultid], ul > li').all();
+      if (rows.length === 0) return links;
+
+      // Only try the top N cheapest flights to avoid slowing down too much
+      const toTry = flights
+        .slice()
+        .sort((a, b) => a.price - b.price)
+        .slice(0, maxClicks);
+
+      for (const flight of toTry) {
+        const key = `${flight.price}-${flight.airline}`;
+        if (links.has(key)) continue;
+
+        try {
+          // Find a row that contains this price
+          const priceText = `$${flight.price.toLocaleString('en-US')}`;
+          const row = page.locator(`li:has-text("${priceText}")`).first();
+          if (!(await row.isVisible({ timeout: 1000 }).catch(() => false))) continue;
+
+          await row.click({ timeout: 2000 });
+          await page.waitForTimeout(1500);
+
+          // Look for booking links in the expanded panel.
+          // Google Flights shows "Book with [airline]" buttons that link to
+          // google.com/travel/flights/booking?... or directly to the airline.
+          const bookingLink = await page.evaluate(() => {
+            // Look for links containing "book" or booking-related URLs
+            const anchors = document.querySelectorAll('a[href*="booking"], a[href*="flights/s/"], a[href*="airline"]');
+            for (const a of anchors) {
+              const href = (a as HTMLAnchorElement).href;
+              if (href && href.includes('google.com/travel/flights/') && href.includes('booking')) {
+                return href;
+              }
+            }
+            // Fallback: look for any link that goes to an external airline site
+            const externalLinks = document.querySelectorAll('a[href*="jetsmart"], a[href*="latam"], a[href*="avianca"], a[href*="copaair"], a[href*="aerolineas"]');
+            if (externalLinks.length > 0) {
+              return (externalLinks[0] as HTMLAnchorElement).href;
+            }
+            return null;
+          });
+
+          if (bookingLink) {
+            links.set(key, bookingLink);
+          }
+
+          // Press Escape or click away to close the panel
+          await page.keyboard.press('Escape').catch(() => {});
+          await page.waitForTimeout(500);
+        } catch {
+          // Individual flight click failed — continue with next
+        }
+      }
+    } catch {
+      // Entire extraction failed — return whatever we got
+    }
+    return links;
+  }
+
   buildOneWayUrl(origin: string, destination: string, depDate: Date): string {
     return `https://www.google.com/travel/flights?q=One+way+flight+from+${origin}+to+${destination}+on+${formatDate(depDate)}&curr=USD&hl=en`;
   }
@@ -295,7 +368,11 @@ export class GoogleFlightsSource implements FlightSource {
           const flights = await this.scrapePage(page, url);
           console.log(`      ${formatDate(dep)}: ${flights.length} flight(s)`);
 
+          // Best-effort: extract direct booking links for the cheapest flights
+          const bookingLinks = await this.extractBookingLinks(page, flights);
+
           for (const f of flights) {
+            const directLink = bookingLinks.get(`${f.price}-${f.airline}`);
             const stopCount = /nonstop/i.test(f.stops) ? 0 : parseInt(f.stops, 10) || 1;
             const depIso = this.timeStringToIso(dep, f.departureTime, 0);
             const arrIso = this.timeStringToIso(dep, f.arrivalTime, f.nextDay ? 1 : 0);
@@ -329,7 +406,7 @@ export class GoogleFlightsSource implements FlightSource {
               pricePer: 'total' as const,
               passengers: config.passengers,
               carryOnIncluded: true,
-              bookingUrl: url,
+              bookingUrl: directLink ?? url,
               scrapedAt: new Date(),
               proxyRegion,
             });
