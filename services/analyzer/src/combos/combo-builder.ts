@@ -70,10 +70,19 @@ export function buildCombos(
       .slice(0, topN),
   );
 
-  function gapDays(prev: FlightResult, current: FlightResult): number {
-    const prevDep = new Date(prev.outbound.departure.time).getTime();
-    const thisDep = new Date(current.outbound.departure.time).getTime();
-    return Math.round((thisDep - prevDep) / MS_PER_DAY);
+  /**
+   * Compute the stay duration in calendar nights between two consecutive legs.
+   * Uses arrival of the previous leg → departure of the next leg (= actual
+   * time at the destination), counted as calendar-day difference in UTC.
+   * This matches the user's mental model: "nights of hotel".
+   */
+  function gapNights(prev: FlightResult, current: FlightResult): number {
+    const arr = new Date(prev.outbound.arrival.time);
+    const dep = new Date(current.outbound.departure.time);
+    // Calendar-day difference (UTC midnight to midnight)
+    const arrDay = Date.UTC(arr.getUTCFullYear(), arr.getUTCMonth(), arr.getUTCDate());
+    const depDay = Date.UTC(dep.getUTCFullYear(), dep.getUTCMonth(), dep.getUTCDate());
+    return Math.round((depDay - arrDay) / MS_PER_DAY);
   }
 
   // Cartesian product with temporal constraint
@@ -90,11 +99,12 @@ export function buildCombos(
         // Always require strict temporal order
         if (thisDepMs <= prevDepMs) continue;
 
-        // If a gap constraint is defined for this transition, enforce it
+        // If a gap constraint is defined for this transition, enforce it.
+        // The constraint is in "nights" (calendar-day diff between arrival and departure).
         const constraint = gapConstraints[idx - 1];
         if (constraint) {
-          const days = gapDays(prev, candidate);
-          if (days < constraint.minDays || days > constraint.maxDays) continue;
+          const nights = gapNights(prev, candidate);
+          if (nights < constraint.minDays || nights > constraint.maxDays) continue;
 
           if (constraint.maxHours !== undefined) {
             const prevArrMs = new Date(prev.outbound.arrival.time).getTime();

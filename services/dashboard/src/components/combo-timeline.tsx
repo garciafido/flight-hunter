@@ -190,7 +190,9 @@ export function ComboTimeline({ legs }: Props) {
       if (days != null) {
         const emoji = days <= 4 ? '🏨' : '🏖';
         const stayLabel =
-          days === 0 ? 'conexión' : days === 1 ? '1 día en' : `${days} días en`;
+          days === 0
+            ? 'conexión'
+            : `${days} ${days === 1 ? 'noche' : 'noches'} (${days + 1} días) en`;
         rows.push(
           <div key={`stay-${i}`} style={{ display: 'flex', alignItems: 'center', minHeight: 28 }}>
             <div style={{ ...dottedStyle, height: 28 }} />

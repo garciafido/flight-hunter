@@ -108,7 +108,7 @@ export default function AlertsPage() {
       if (combo!.waypoints && combo!.waypoints.length > 0) {
         const summary = combo!.waypoints.map((wp: any) =>
           wp.type === 'stay'
-            ? `🏨 ${wp.airport} ${wp.minDays}-${wp.maxDays}d`
+            ? `🏨 ${wp.airport} ${wp.minDays}-${wp.maxDays} noches`
             : `✈ ${wp.airport} <${wp.maxHours}h`,
         ).join(' · ');
         lines.push(summary);
@@ -152,7 +152,9 @@ export default function AlertsPage() {
           if (days != null) {
             const emoji = days <= 4 ? '🏨' : '🏖';
             const stayLabel =
-              days === 0 ? 'conexión en' : days === 1 ? '1 día en' : `${days} días en`;
+              days === 0
+                ? 'conexión en'
+                : `${days} ${days === 1 ? 'noche' : 'noches'} (${days + 1} días) en`;
             lines.push(`${emoji} ${stayLabel} ${leg.arrivalAirport}`);
             lines.push('');
           }
@@ -373,7 +375,7 @@ export default function AlertsPage() {
                           padding: '2px 8px', borderRadius: 10,
                         }}>
                           {wp.type === 'stay'
-                            ? `🏨 ${wp.airport} ${wp.minDays}-${wp.maxDays}d`
+                            ? `🏨 ${wp.airport} ${wp.minDays}-${wp.maxDays} noches`
                             : `✈ ${wp.airport} <${wp.maxHours}h`}
                         </span>
                       ))}

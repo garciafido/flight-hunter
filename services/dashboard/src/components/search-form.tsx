@@ -525,7 +525,7 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
               {wp.type === 'stay' ? (
                 <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
                   <div>
-                    <label style={labelStyle}>Min días</label>
+                    <label style={labelStyle}>Min noches</label>
                     <input
                       data-testid="waypoint-mindays"
                       type="number"
@@ -536,7 +536,7 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
                     />
                   </div>
                   <div>
-                    <label style={labelStyle}>Max días</label>
+                    <label style={labelStyle}>Max noches</label>
                     <input
                       data-testid="waypoint-maxdays"
                       type="number"

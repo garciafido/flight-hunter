@@ -116,7 +116,7 @@ describe('ComboTimeline', () => {
     const { container } = render(<ComboTimeline legs={legs} />);
     const text = container.textContent ?? '';
     expect(text).toContain('🏨');
-    expect(text).toContain('3 días en LIM');
+    expect(text).toContain('3 noches (4 días) en LIM');
   });
 
   it('renders a beach emoji for long stays (>4 days)', () => {
@@ -145,7 +145,7 @@ describe('ComboTimeline', () => {
     const { container } = render(<ComboTimeline legs={legs} />);
     const text = container.textContent ?? '';
     expect(text).toContain('🏖');
-    expect(text).toContain('12 días en CUZ');
+    expect(text).toContain('12 noches (13 días) en CUZ');
   });
 
   it('renders a connection label for same-day stays (0 days)', () => {
@@ -212,9 +212,9 @@ describe('ComboTimeline', () => {
     const { container } = render(<ComboTimeline legs={legs} />);
     const text = container.textContent ?? '';
     // First stay (LIM, 3 days)
-    expect(text).toContain('3 días en LIM');
-    // Second stay (CUZ, 9 days)
-    expect(text).toContain('9 días en CUZ');
+    expect(text).toContain('3 noches (4 días) en LIM');
+    // Second stay (CUZ, 9 nights)
+    expect(text).toContain('9 noches (10 días) en CUZ');
   });
 
   it('falls back to "Vuelo" label when airline is missing or "Unknown"', () => {
