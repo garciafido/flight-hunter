@@ -468,177 +468,131 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
         <div style={waypointAnchorStyle}>[ORIGEN] {form.origin || '???'}</div>
         <div style={connectorStyle} />
 
-        {/* Insert before index 0 */}
-        <button type="button" style={insertButtonStyle} onClick={() => insertAt(0)}>
-          + Insertar parada
-        </button>
-
-        {form.waypoints.map((wp, i) => (
-          <div key={wp.id}>
-            <div style={connectorStyle} />
-            <div style={waypointCardStyle}>
-              {/* Header: airport input + delete button */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <input
-                  data-testid="waypoint-airport"
-                  value={wp.airport}
-                  onChange={e => updateWaypoint(i, { airport: e.target.value.toUpperCase() })}
-                  placeholder="IATA"
-                  maxLength={3}
-                  style={{ ...inputStyle, width: 80, textTransform: 'uppercase' }}
-                />
-                <button
-                  type="button"
-                  data-testid="waypoint-remove"
-                  onClick={() => removeWaypoint(i)}
-                  style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 16 }}
-                >
-                  ✕
-                </button>
-              </div>
-
-              {/* Type radio */}
-              <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
-                  <input
-                    type="radio"
-                    name={`wp-type-${wp.id}`}
-                    value="stay"
-                    checked={wp.type === 'stay'}
-                    onChange={() => updateWaypoint(i, { type: 'stay' })}
-                  />
-                  Estadía
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
-                  <input
-                    type="radio"
-                    name={`wp-type-${wp.id}`}
-                    value="connection"
-                    checked={wp.type === 'connection'}
-                    onChange={() => updateWaypoint(i, { type: 'connection' })}
-                  />
-                  Conexión
-                </label>
-              </div>
-
-              {/* Conditional inputs based on type */}
-              {wp.type === 'stay' ? (
-                <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
-                  <div>
-                    <label style={labelStyle}>Min noches</label>
+        {form.waypoints.map((wp, i) => {
+          const fromAirport = i === 0 ? (form.origin || '?') : (form.waypoints[i - 1]?.airport || '?');
+          return (
+            <div key={wp.id}>
+              {/* ── Flight connector: fromAirport → wp.airport ── */}
+              <div style={connectorStyle} />
+              <div style={{
+                background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6,
+                padding: '8px 12px', fontSize: 12,
+              }}>
+                <div style={{ fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                  ✈ {fromAirport} → {wp.airport || '?'}
+                </div>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    Valijas:
                     <input
-                      data-testid="waypoint-mindays"
                       type="number"
-                      min="0"
-                      value={wp.minDays}
-                      onChange={e => updateWaypoint(i, { minDays: Number(e.target.value) })}
-                      style={{ ...inputStyle, width: 80 }}
+                      data-testid="waypoint-checkedbags"
+                      min="0" max="5"
+                      value={wp.checkedBags}
+                      onChange={e => updateWaypoint(i, { checkedBags: Number(e.target.value) })}
+                      style={{ ...inputStyle, width: 50, padding: '2px 6px' }}
                     />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Max noches</label>
+                  </span>
+                  <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    Pax:
                     <input
-                      data-testid="waypoint-maxdays"
                       type="number"
-                      min="0"
-                      value={wp.maxDays}
-                      onChange={e => updateWaypoint(i, { maxDays: Number(e.target.value) })}
-                      style={{ ...inputStyle, width: 80 }}
+                      data-testid="waypoint-passengers"
+                      min="1" max="9"
+                      placeholder={String(form.passengers)}
+                      value={wp.passengers}
+                      onChange={e => updateWaypoint(i, { passengers: e.target.value === '' ? '' : Number(e.target.value) })}
+                      style={{ ...inputStyle, width: 50, padding: '2px 6px' }}
                     />
-                  </div>
+                  </span>
                 </div>
-              ) : (
-                <div style={{ marginBottom: 8 }}>
-                  <label style={labelStyle}>Max horas</label>
-                  <input
-                    data-testid="waypoint-maxhours"
-                    type="number"
-                    min="0"
-                    value={wp.maxHours}
-                    onChange={e => updateWaypoint(i, { maxHours: Number(e.target.value) })}
-                    style={{ ...inputStyle, width: 80 }}
-                  />
-                </div>
-              )}
+              </div>
 
-              {/* Checked bags + passengers — labeled with the route this leg covers */}
-              <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4, fontStyle: 'italic' }}>
-                ✈ Tramo {i === 0 ? form.origin : (form.waypoints[i - 1]?.airport || '?')} → {wp.airport}
-              </div>
-              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end' }}>
-                <div>
-                  <label style={labelStyle}>Valijas</label>
+              {/* ── City node: stay/connection config ── */}
+              <div style={connectorStyle} />
+              <div style={waypointCardStyle}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <input
-                    type="number"
-                    data-testid="waypoint-checkedbags"
-                    min="0"
-                    max="5"
-                    value={wp.checkedBags}
-                    onChange={e => updateWaypoint(i, { checkedBags: Number(e.target.value) })}
-                    style={{ ...inputStyle, width: 60 }}
+                    data-testid="waypoint-airport"
+                    value={wp.airport}
+                    onChange={e => updateWaypoint(i, { airport: e.target.value.toUpperCase() })}
+                    placeholder="IATA"
+                    maxLength={3}
+                    style={{ ...inputStyle, width: 80, textTransform: 'uppercase' }}
                   />
+                  <div style={{ display: 'flex', gap: 12, marginLeft: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
+                      <input type="radio" name={`wp-type-${wp.id}`} value="stay" checked={wp.type === 'stay'} onChange={() => updateWaypoint(i, { type: 'stay' })} />
+                      Estadía
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
+                      <input type="radio" name={`wp-type-${wp.id}`} value="connection" checked={wp.type === 'connection'} onChange={() => updateWaypoint(i, { type: 'connection' })} />
+                      Conexión
+                    </label>
+                  </div>
+                  <button type="button" data-testid="waypoint-remove" onClick={() => removeWaypoint(i)}
+                    style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 16 }}>
+                    ✕
+                  </button>
                 </div>
-                <div>
-                  <label style={labelStyle}>Pasajeros</label>
-                  <input
-                    type="number"
-                    data-testid="waypoint-passengers"
-                    min="1"
-                    max="9"
-                    placeholder={String(form.passengers)}
-                    value={wp.passengers}
-                    onChange={e => updateWaypoint(i, { passengers: e.target.value === '' ? '' : Number(e.target.value) })}
-                    style={{ ...inputStyle, width: 60 }}
-                  />
-                </div>
+                {wp.type === 'stay' ? (
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <div>
+                      <label style={labelStyle}>Min noches</label>
+                      <input data-testid="waypoint-mindays" type="number" min="0" value={wp.minDays}
+                        onChange={e => updateWaypoint(i, { minDays: Number(e.target.value) })} style={{ ...inputStyle, width: 80 }} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Max noches</label>
+                      <input data-testid="waypoint-maxdays" type="number" min="0" value={wp.maxDays}
+                        onChange={e => updateWaypoint(i, { maxDays: Number(e.target.value) })} style={{ ...inputStyle, width: 80 }} />
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label style={labelStyle}>Max horas</label>
+                    <input data-testid="waypoint-maxhours" type="number" min="0" value={wp.maxHours}
+                      onChange={e => updateWaypoint(i, { maxHours: Number(e.target.value) })} style={{ ...inputStyle, width: 80 }} />
+                  </div>
+                )}
               </div>
+              <div style={connectorStyle} />
+
+              <button type="button" style={insertButtonStyle} onClick={() => insertAt(i + 1)}>
+                + Insertar parada
+              </button>
             </div>
-            <div style={connectorStyle} />
+          );
+        })}
 
-            {/* Insert after this card (index i+1) */}
-            <button type="button" style={insertButtonStyle} onClick={() => insertAt(i + 1)}>
-              + Insertar parada
-            </button>
-          </div>
-        ))}
-
+        {/* ── Return flight connector ── */}
         <div style={connectorStyle} />
-        {/* Return anchor — carries return-leg checked-bag count + optional passenger override */}
-        <div style={{ ...waypointAnchorStyle, paddingBottom: 12 }}>
-          <div>[REGRESO] {form.origin || '???'}</div>
-          <div style={{ fontSize: 11, color: '#1e40af', marginTop: 4, fontStyle: 'italic' }}>
-            ✈ Tramo {form.waypoints.length > 0 ? (form.waypoints[form.waypoints.length - 1]?.airport || '?') : '?'} → {form.origin || '?'}
+        <div style={{
+          background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6,
+          padding: '8px 12px', fontSize: 12,
+        }}>
+          <div style={{ fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+            ✈ {form.waypoints.length > 0 ? (form.waypoints[form.waypoints.length - 1]?.airport || '?') : '?'} → {form.origin || '?'}
           </div>
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'center', marginTop: 8, fontSize: 12, fontWeight: 500 }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               Valijas:
-              <input
-                type="number"
-                data-testid="return-checkedbags"
-                name="returnCheckedBags"
-                min="0"
-                max="5"
-                value={form.returnCheckedBags}
-                onChange={handleChange}
-                style={{ ...inputStyle, width: 50, padding: '2px 6px' }}
-              />
+              <input type="number" data-testid="return-checkedbags" name="returnCheckedBags"
+                min="0" max="5" value={form.returnCheckedBags} onChange={handleChange}
+                style={{ ...inputStyle, width: 50, padding: '2px 6px' }} />
             </span>
             <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              Pasajeros:
-              <input
-                type="number"
-                data-testid="return-passengers"
-                name="returnPassengers"
-                min="1"
-                max="9"
-                placeholder={String(form.passengers)}
-                value={form.returnPassengers}
-                onChange={handleChange}
-                style={{ ...inputStyle, width: 50, padding: '2px 6px' }}
-              />
+              Pax:
+              <input type="number" data-testid="return-passengers" name="returnPassengers"
+                min="1" max="9" placeholder={String(form.passengers)} value={form.returnPassengers}
+                onChange={handleChange} style={{ ...inputStyle, width: 50, padding: '2px 6px' }} />
             </span>
           </div>
         </div>
+
+        {/* ── Return anchor ── */}
+        <div style={connectorStyle} />
+        <div style={waypointAnchorStyle}>[REGRESO] {form.origin || '???'}</div>
 
         <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, fontStyle: 'italic' }}>
           El viaje sigue el orden de arriba a abajo. Para probar otro orden, duplicá la búsqueda y reordená las paradas.
