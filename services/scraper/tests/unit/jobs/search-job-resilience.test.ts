@@ -23,7 +23,6 @@ const makeConfig = (overrides: Partial<SearchConfig> = {}): SearchConfig => ({
     airportBlacklist: {},
     maxUnplannedStops: 1,
     requireCarryOn: false,
-    maxTotalTravelTime: 1440,
   },
   alertConfig: {
     scoreThresholds: { info: 60, good: 75, urgent: 90 },
@@ -161,7 +160,7 @@ describe('SearchJobProcessor — resilience wiring', () => {
   });
 
   it('calls resilience layer for each unique waypoint pair', async () => {
-    // 2-waypoint [LIM, CUZ] → 6 unique pairs → 6 resilience calls
+    // 2-waypoint [LIM, CUZ] → no permutations → 3 pairs → 3 resilience calls
     resilience.callSource.mockResolvedValue({ result: [], skipped: false });
 
     const processor = new SearchJobProcessor(
@@ -180,7 +179,7 @@ describe('SearchJobProcessor — resilience wiring', () => {
 
     await processor.execute(config);
 
-    expect(resilience.callSource).toHaveBeenCalledTimes(6);
+    expect(resilience.callSource).toHaveBeenCalledTimes(3);
     expect(resilience.callSource).toHaveBeenCalledWith('google-flights', false, expect.any(Function));
   });
 

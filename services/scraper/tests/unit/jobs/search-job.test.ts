@@ -31,7 +31,6 @@ const makeConfig = (overrides: Partial<SearchConfig> = {}): SearchConfig => ({
     airportBlacklist: {},
     maxUnplannedStops: 1,
     requireCarryOn: false,
-    maxTotalTravelTime: 1440,
   },
   alertConfig: {
     scoreThresholds: { info: 60, good: 75, urgent: 90 },
@@ -99,8 +98,8 @@ describe('SearchJobProcessor waypoint dispatch', () => {
     expect(calledPairs).toContainEqual({ origin: 'MAD', destination: 'SCL' });
   });
 
-  it('dedupes pairs across permutations for a 2-waypoint search (6 unique pairs)', async () => {
-    // origin=BUE, waypoints=[LIM, CUZ] → 2 perms → 6 unique pairs
+  it('calls searchOneWay for each pair in the single sequence for a 2-waypoint search (3 pairs)', async () => {
+    // origin=BUE, waypoints=[LIM, CUZ] → no permutations → 1 sequence BUE→LIM→CUZ→BUE → 3 pairs
     const processor = new SearchJobProcessor(
       [oneWaySource as never],
       vpnRouter as never,
@@ -114,19 +113,16 @@ describe('SearchJobProcessor waypoint dispatch', () => {
     });
     await processor.execute(config);
 
-    // 6 unique pairs × 1 region × 1 source = 6 calls
-    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(6);
+    // 3 pairs × 1 region × 1 source = 3 calls
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(3);
     const calledPairs = vi.mocked(oneWaySource.searchOneWay).mock.calls.map((c: any) => ({
       origin: c[1].origin,
       destination: c[1].destination,
     }));
-    // All 6 unique pairs from the 2 permutations
+    // The 3 pairs from the single sequence BUE→LIM→CUZ→BUE
     expect(calledPairs).toContainEqual({ origin: 'BUE', destination: 'LIM' });
     expect(calledPairs).toContainEqual({ origin: 'LIM', destination: 'CUZ' });
     expect(calledPairs).toContainEqual({ origin: 'CUZ', destination: 'BUE' });
-    expect(calledPairs).toContainEqual({ origin: 'BUE', destination: 'CUZ' });
-    expect(calledPairs).toContainEqual({ origin: 'CUZ', destination: 'LIM' });
-    expect(calledPairs).toContainEqual({ origin: 'LIM', destination: 'BUE' });
   });
 
   it('iterates over all proxy regions', async () => {
@@ -270,9 +266,9 @@ describe('SearchJobProcessor flexible destination mode', () => {
 
   it('substitutes last waypoint for each candidate and calls searchOneWay', async () => {
     // config: origin=SCL, waypoints=[LIM, CUZ], candidates=[BOG, UIO]
-    // Sub-search 1: waypoints=[LIM, BOG] → 6 unique pairs
-    // Sub-search 2: waypoints=[LIM, UIO] → 6 unique pairs
-    // total: 12 searchOneWay calls (6 per candidate × 1 region)
+    // Sub-search 1: waypoints=[LIM, BOG] → 3 pairs (no permutations)
+    // Sub-search 2: waypoints=[LIM, UIO] → 3 pairs (no permutations)
+    // total: 6 searchOneWay calls (3 per candidate × 1 region)
     const processor = new SearchJobProcessor(
       [oneWaySource as never],
       vpnRouter as never,
@@ -281,7 +277,7 @@ describe('SearchJobProcessor flexible destination mode', () => {
 
     await processor.execute(makeFlexibleConfig(['BOG', 'UIO']));
 
-    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(12);
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(6);
   });
 
   it('uses the correct airport in the last waypoint for each sub-search', async () => {
@@ -337,11 +333,10 @@ describe('SearchJobProcessor flexible destination mode', () => {
     };
     await processor.execute(config);
 
-    // Single mode: 1-waypoint [CUZ] (last waypoint NOT substituted)
-    // → SCL→CUZ, CUZ→SCL = 2 pairs, but config has 2 waypoints [LIM, CUZ]
-    // so 6 unique pairs from 2 permutations
+    // Single mode: config has 2 waypoints [LIM, CUZ], no permutations
+    // → 3 pairs from the single sequence SCL→LIM→CUZ→SCL
     // destinationCandidates are ignored
-    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(6);
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(3);
   });
 
   it('falls through to plain executeWaypoints when destinationCandidates is empty', async () => {
@@ -359,8 +354,8 @@ describe('SearchJobProcessor flexible destination mode', () => {
     await processor.execute(config);
 
     // Empty candidates → falls through to executeWaypoints with [LIM, CUZ]
-    // → 6 unique pairs
-    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(6);
+    // → 3 pairs from the single sequence (no permutations)
+    expect(oneWaySource.searchOneWay).toHaveBeenCalledTimes(3);
   });
 
   it('skips and warns when flexible config has no waypoints', async () => {

@@ -561,7 +561,10 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
                 </div>
               )}
 
-              {/* Checked bags + passengers */}
+              {/* Checked bags + passengers — labeled with the route this leg covers */}
+              <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4, fontStyle: 'italic' }}>
+                ✈ Tramo {i === 0 ? form.origin : (form.waypoints[i - 1]?.airport || '?')} → {wp.airport}
+              </div>
               <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end' }}>
                 <div>
                   <label style={labelStyle}>Valijas</label>
@@ -603,6 +606,9 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
         {/* Return anchor — carries return-leg checked-bag count + optional passenger override */}
         <div style={{ ...waypointAnchorStyle, paddingBottom: 12 }}>
           <div>[REGRESO] {form.origin || '???'}</div>
+          <div style={{ fontSize: 11, color: '#1e40af', marginTop: 4, fontStyle: 'italic' }}>
+            ✈ Tramo {form.waypoints.length > 0 ? (form.waypoints[form.waypoints.length - 1]?.airport || '?') : '?'} → {form.origin || '?'}
+          </div>
           <div style={{ display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'center', marginTop: 8, fontSize: 12, fontWeight: 500 }}>
             <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               Valijas:

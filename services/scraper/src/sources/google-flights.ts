@@ -47,6 +47,7 @@ export class GoogleFlightsSource implements FlightSource {
     departureTime?: string;  // "8:40 AM"
     arrivalTime?: string;    // "5:20 PM" (may be "5:20 PM+1" for next day)
     nextDay?: boolean;       // true if arrival is next day
+  scrapedDuration?: number;  // minutes, extracted from "X hr Y min" text
   }>> {
     await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
 
@@ -137,6 +138,20 @@ export class GoogleFlightsSource implements FlightSource {
         return undefined;
       }
 
+      // Regex to match Google Flights duration text like "8 hr 48 min", "2 hr", "45 min"
+      const DURATION_RE = /^(\d{1,2})\s*hr(?:\s+(\d{1,2})\s*min)?$/i;
+      const DURATION_MIN_ONLY = /^(\d{1,3})\s*min$/i;
+
+      function parseDurationText(text: string): number | undefined {
+        const full = text.match(DURATION_RE);
+        if (full) {
+          return parseInt(full[1], 10) * 60 + (full[2] ? parseInt(full[2], 10) : 0);
+        }
+        const minOnly = text.match(DURATION_MIN_ONLY);
+        if (minOnly) return parseInt(minOnly[1], 10);
+        return undefined;
+      }
+
       for (let i = 0; i < lines.length; i++) {
         const m = lines[i].match(/^\$(\d{1,3}(?:,\d{3})*)$/);
         if (!m) continue;
@@ -145,7 +160,8 @@ export class GoogleFlightsSource implements FlightSource {
 
         let airline = '';
         let stops = '';
-        // Look BACKWARD first — the listing usually has [time/airline/stops/...] before $price
+        let scrapedDuration: number | undefined;
+        // Look BACKWARD first — the listing usually has [time/airline/stops/duration] before $price
         const lookbackEnd = Math.max(0, i - 25);
         const lookaheadEnd = Math.min(lines.length - 1, i + 10);
 
@@ -157,7 +173,11 @@ export class GoogleFlightsSource implements FlightSource {
           if (!stops && /^\d+ stop|^Nonstop$/i.test(prev)) {
             stops = prev;
           }
-          if (airline && stops) break;
+          if (scrapedDuration === undefined) {
+            const dur = parseDurationText(prev);
+            if (dur !== undefined && dur >= 30 && dur <= 2880) scrapedDuration = dur;
+          }
+          if (airline && stops && scrapedDuration !== undefined) break;
         }
 
         // Find time range — backward first, then forward
@@ -171,12 +191,13 @@ export class GoogleFlightsSource implements FlightSource {
           departureTime: range?.departureTime,
           arrivalTime: range?.arrivalTime,
           nextDay: range?.nextDay,
+          scrapedDuration,
         });
       }
 
       const seen = new Set<string>();
       return items.filter((f) => {
-        const k = `${f.price}-${f.airline}-${f.departureTime ?? ''}`;
+        const k = `${f.price}-${f.airline}-${f.departureTime ?? ''}-${f.scrapedDuration ?? ''}`;
         if (seen.has(k)) return false;
         seen.add(k);
         return true;
@@ -278,7 +299,11 @@ export class GoogleFlightsSource implements FlightSource {
             const stopCount = /nonstop/i.test(f.stops) ? 0 : parseInt(f.stops, 10) || 1;
             const depIso = this.timeStringToIso(dep, f.departureTime, 0);
             const arrIso = this.timeStringToIso(dep, f.arrivalTime, f.nextDay ? 1 : 0);
-            const durationMinutes = computeDurationMinutes(depIso, arrIso, f.departureTime, f.arrivalTime);
+            // Prefer the duration scraped from Google Flights text ("8 hr 48 min")
+            // over computing from timestamps, because timestamps are wall-clock
+            // times in different timezones (BUE=UTC-3, CUZ=UTC-5, etc.) and the
+            // naive diff gives wrong results for cross-timezone flights.
+            const durationMinutes = f.scrapedDuration ?? computeDurationMinutes(depIso, arrIso, f.departureTime, f.arrivalTime);
             // For a one-way leg the inbound is a stub pointing back so the type is satisfied
             allResults.push({
               searchId: config.id,
