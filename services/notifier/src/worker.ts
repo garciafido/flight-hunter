@@ -80,6 +80,15 @@ export class NotifierWorker {
       select: { id: true },
     });
     if (recent) {
+      // Instead of suppressing, refresh the existing alert so the user sees
+      // "last verified X min ago" and the latest comboInfo (prices may shift).
+      await this.deps.prisma.alert.update({
+        where: { id: recent.id },
+        data: {
+          sentAt: new Date(),
+          comboInfo: alert.combo ? (alert.combo as object) : undefined,
+        },
+      });
       return;
     }
     // Keep the in-memory throttle as a secondary cache to avoid hitting the
