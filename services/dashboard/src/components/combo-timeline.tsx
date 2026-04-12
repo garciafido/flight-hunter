@@ -160,8 +160,9 @@ export function ComboTimeline({ legs }: Props) {
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ color: '#2563eb', textDecoration: 'underline' }}
+                title={`Buscar en Google Flights: ${leg.airline ?? 'vuelo'} a las ${dep?.hhmm ?? ''}`}
               >
-                reservar
+                buscar en GF
               </a>
             </>
           )}
@@ -208,11 +209,10 @@ export function ComboTimeline({ legs }: Props) {
   return (
     <div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>{rows}</div>
-      {anyRealTime && (
-        <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>
-          Horarios en hora local de cada aeropuerto
-        </div>
-      )}
+      <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>
+        {anyRealTime && <>Horarios en hora local de cada aeropuerto · </>}
+        Los links abren Google Flights en esa fecha — buscá el vuelo por aerolínea y horario
+      </div>
     </div>
   );
 }
