@@ -25,6 +25,7 @@ export interface WaypointFormEntry {
 }
 
 export interface FormState {
+  active: boolean;
   name: string;
   origin: string;
   passengers: number;
@@ -74,6 +75,7 @@ export function searchRowToFormState(row: any): FormState {
   const alertConfig = row.alertConfig ?? {};
   const wps = Array.isArray(row.waypoints) ? row.waypoints : [];
   return {
+    active: row.active ?? true,
     name: row.name ?? '',
     origin: row.origin ?? '',
     passengers: row.passengers ?? 1,
@@ -114,6 +116,7 @@ export function searchRowToFormState(row: any): FormState {
 }
 
 const DEFAULT_FORM_STATE: FormState = {
+  active: true,
   name: '',
   origin: '',
   passengers: 1,
@@ -249,6 +252,7 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
       };
 
       const payload = {
+        active: form.active,
         name: form.name,
         origin: form.origin,
         passengers: Number(form.passengers),
@@ -324,6 +328,27 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
   return (
     <form onSubmit={handleSubmit} style={{ maxWidth: 600 }}>
       {error && <div style={{ color: '#dc2626', marginBottom: 12 }}>{error}</div>}
+
+      {/* Active toggle — only visible in edit mode, placed at the very top */}
+      {isEdit && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          marginBottom: 20, padding: '12px 16px', borderRadius: 8,
+          background: form.active ? '#f0fdf4' : '#fef2f2',
+          border: `1px solid ${form.active ? '#bbf7d0' : '#fecaca'}`,
+        }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              name="active"
+              checked={form.active}
+              onChange={handleChange}
+              style={{ width: 18, height: 18 }}
+            />
+            {form.active ? 'Búsqueda activa' : 'Búsqueda inactiva (pausada)'}
+          </label>
+        </div>
+      )}
 
       {/* Section 1 — Información general */}
       <div style={sectionStyle}>
