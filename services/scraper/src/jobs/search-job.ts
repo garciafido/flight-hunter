@@ -74,6 +74,18 @@ export class SearchJobProcessor {
         }
       }
     }
+    // If the user set a returnBy deadline, cap the return leg's date window.
+    // The return leg is the LAST pair in each sequence: destination === origin.
+    const returnBy = (config as any).returnBy ? new Date((config as any).returnBy) : null;
+    if (returnBy) {
+      for (const [key, pair] of pairWindows) {
+        if (pair.destination === config.origin && pair.to > returnBy) {
+          pair.to = returnBy;
+          // Also cap from if it somehow exceeds returnBy
+          if (pair.from > returnBy) pair.from = returnBy;
+        }
+      }
+    }
     const uniquePairs = Array.from(pairWindows.values());
 
     const regions = config.proxyRegions.length > 0 ? config.proxyRegions : ['default'];

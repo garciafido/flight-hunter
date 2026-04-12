@@ -33,11 +33,11 @@ export interface FormState {
   departureFrom: string;
   departureTo: string;
   maxConnectionHours: number;
+  returnBy: string; // ISO date or empty string
   waypoints: WaypointFormEntry[];
   // Filters (structured)
   requireCarryOn: boolean;
   maxUnplannedStops: number;
-  maxTotalTravelHours: number; // 0 = unlimited
   airlineBlacklist: string;     // comma-separated, parsed to string[] on submit
   // Checked bags on the final return leg (per passenger).
   returnCheckedBags: number;
@@ -88,6 +88,7 @@ export function searchRowToFormState(row: any): FormState {
       ? row.departureTo.slice(0, 10)
       : '',
     maxConnectionHours: row.maxConnectionHours ?? 6,
+    returnBy: typeof row.returnBy === 'string' ? row.returnBy.slice(0, 10) : '',
     waypoints: wps.length > 0
       ? wps.map((wp: any) => ({
           id: crypto.randomUUID(),
@@ -102,7 +103,6 @@ export function searchRowToFormState(row: any): FormState {
       : [newWaypointEntry()],
     requireCarryOn: filters.requireCarryOn ?? false,
     maxUnplannedStops: filters.maxUnplannedStops ?? 1,
-    maxTotalTravelHours: filters.maxTotalTravelTime ?? 0,
     airlineBlacklist: Array.isArray(filters.airlineBlacklist) ? filters.airlineBlacklist.join(', ') : '',
     returnCheckedBags: row.returnCheckedBags ?? 0,
     returnPassengers: row.returnPassengers ?? '',
@@ -126,10 +126,10 @@ const DEFAULT_FORM_STATE: FormState = {
   departureFrom: '',
   departureTo: '',
   maxConnectionHours: 6,
+  returnBy: '',
   waypoints: [],
   requireCarryOn: false,
   maxUnplannedStops: 1,
-  maxTotalTravelHours: 0,
   airlineBlacklist: '',
   returnCheckedBags: 0,
   returnPassengers: '',
@@ -242,7 +242,6 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
         airportBlacklist: {},
         maxUnplannedStops: Number(form.maxUnplannedStops),
         requireCarryOn: form.requireCarryOn,
-        maxTotalTravelTime: Number(form.maxTotalTravelHours),
       };
 
       const payload = {
@@ -253,6 +252,7 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
         departureFrom: form.departureFrom,
         departureTo: form.departureTo,
         maxConnectionHours: Number(form.maxConnectionHours),
+        ...(form.returnBy ? { returnBy: form.returnBy } : {}),
         returnCheckedBags: Number(form.returnCheckedBags),
         ...(form.returnPassengers !== '' ? { returnPassengers: Number(form.returnPassengers) } : {}),
         waypoints: form.waypoints.map(wp => ({
@@ -372,9 +372,23 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
             <input name="departureTo" value={form.departureTo} onChange={handleChange} type="date" required style={inputStyle} />
           </div>
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={labelStyle}>Máx horas de conexión</label>
-          <input name="maxConnectionHours" value={form.maxConnectionHours} onChange={handleChange} type="number" min="1" style={{ ...inputStyle, width: 120 }} />
+        <div style={rowStyle}>
+          <div>
+            <label style={labelStyle}>Máx horas de conexión</label>
+            <input name="maxConnectionHours" value={form.maxConnectionHours} onChange={handleChange} type="number" min="1" style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Fecha máxima de regreso</label>
+            <input
+              name="returnBy"
+              data-testid="return-by"
+              value={form.returnBy}
+              onChange={handleChange}
+              type="date"
+              style={inputStyle}
+            />
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>Vacío = sin límite</span>
+          </div>
         </div>
       </div>
 
@@ -655,18 +669,6 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
               type="number"
               min="0"
               max="3"
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <label style={labelStyle}>Max horas de viaje (0 = sin límite)</label>
-            <input
-              name="maxTotalTravelHours"
-              data-testid="filter-maxtravel"
-              value={form.maxTotalTravelHours}
-              onChange={handleChange}
-              type="number"
-              min="0"
               style={inputStyle}
             />
           </div>

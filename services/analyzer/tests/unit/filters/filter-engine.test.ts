@@ -12,7 +12,6 @@ function makeFilters(overrides: Partial<SearchFilters> = {}): SearchFilters {
     minConnectionTime: 60,
     maxConnectionTime: 480,
     requireCarryOn: false,
-    maxTotalTravelTime: 1440,
     ...overrides,
   };
 }
@@ -167,41 +166,6 @@ describe('FilterEngine', () => {
         makeFlight({ carryOnIncluded: false }),
         makeFilters({ requireCarryOn: false }),
       );
-      expect(result.passed).toBe(true);
-    });
-  });
-
-  describe('max total travel time', () => {
-    it('rejects one-way flight exceeding max travel time (filter is in hours)', () => {
-      // outbound=480min (8h). Max 7h = 420min → reject
-      const result = engine.apply(makeFlight(), makeFilters({ maxTotalTravelTime: 7 }));
-      expect(result.passed).toBe(false);
-      expect(result.reason).toContain('480');
-      expect(result.reason).toContain('420');
-    });
-
-    it('passes flight within max travel time', () => {
-      // outbound=480min (8h), max 9h = 540min → pass
-      const result = engine.apply(makeFlight(), makeFilters({ maxTotalTravelTime: 9 }));
-      expect(result.passed).toBe(true);
-    });
-
-    it('passes flight exactly at max travel time', () => {
-      // 480min = 8h
-      const result = engine.apply(makeFlight(), makeFilters({ maxTotalTravelTime: 8 }));
-      expect(result.passed).toBe(true);
-    });
-
-    it('passes flight when max travel time is 0 (unlimited)', () => {
-      const result = engine.apply(makeFlight(), makeFilters({ maxTotalTravelTime: 0 }));
-      expect(result.passed).toBe(true);
-    });
-
-    it('passes flight when source returns 0 duration (cannot enforce)', () => {
-      const flight = makeFlight({
-        outbound: { ...makeFlight().outbound, durationMinutes: 0 },
-      });
-      const result = engine.apply(flight, makeFilters({ maxTotalTravelTime: 5 }));
       expect(result.passed).toBe(true);
     });
   });

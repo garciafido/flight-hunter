@@ -35,7 +35,6 @@ export interface SearchFilters {
   maxUnplannedStops: number;
   requireCarryOn: boolean;
   requireCheckedBag?: boolean;
-  maxTotalTravelTime: number;
 }
 
 export interface SearchAlertConfig {
@@ -60,6 +59,9 @@ export interface SearchConfig {
   returnCheckedBags?: number;
   // Override passenger count for the final return leg. Omit to inherit global.
   returnPassengers?: number;
+  // Hard deadline: the return flight must depart on or before this date.
+  // Omit = no deadline (derived from waypoint stays + departure window).
+  returnBy?: Date;
   proxyRegions: ProxyRegion[];
   scanIntervalMin: number;
   active: boolean;

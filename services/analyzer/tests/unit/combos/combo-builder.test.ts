@@ -55,7 +55,6 @@ function makeSearchConfig(maxPricePerPerson = 1500): SearchConfig {
       minConnectionTime: 60,
       maxConnectionTime: 480,
       requireCarryOn: false,
-      maxTotalTravelTime: 2880,
     },
     alertConfig: {
       scoreThresholds: { info: 50, good: 70, urgent: 85 },

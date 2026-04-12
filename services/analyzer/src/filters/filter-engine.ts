@@ -48,18 +48,6 @@ export class FilterEngine {
       return { passed: false, reason: 'Carry-on not included' };
     }
 
-    // Max travel time per leg (in hours, 0 = unlimited).
-    // For waypoint model, each scraped result is a one-way leg, so we only
-    // check outbound.durationMinutes (inbound is a stub in one-way mode).
-    const legDuration = flight.outbound.durationMinutes;
-    const maxTravelMinutes = filters.maxTotalTravelTime * 60;
-    if (legDuration > 0 && maxTravelMinutes > 0 && legDuration > maxTravelMinutes) {
-      return {
-        passed: false,
-        reason: `Flight duration ${legDuration}min exceeds max ${maxTravelMinutes}min`,
-      };
-    }
-
     // Max unplanned stops
     if (flight.outbound.stops > filters.maxUnplannedStops) {
       return {
@@ -72,8 +60,8 @@ export class FilterEngine {
     // an excessive layover. Heuristic: a flight with N stops should take at most
     // (N+1) × maxConnectionHours. E.g., 1-stop flight with maxConnectionHours=6
     // → max total ~12h. A 14-hour flight with 1 stop is rejected.
-    // This uses the global maxConnectionHours from SearchConfig.
     const maxConnHours = options?.maxConnectionHours;
+    const legDuration = flight.outbound.durationMinutes;
     if (maxConnHours && maxConnHours > 0 && flight.outbound.stops > 0 && legDuration > 0) {
       const maxDurationMinutes = (flight.outbound.stops + 1) * maxConnHours * 60;
       if (legDuration > maxDurationMinutes) {

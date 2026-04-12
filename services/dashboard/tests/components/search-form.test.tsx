@@ -51,10 +51,6 @@ describe('SearchForm', () => {
     const maxStops = screen.getByTestId('filter-maxstops') as HTMLInputElement;
     fireEvent.change(maxStops, { target: { name: 'maxUnplannedStops', value: '0' } });
 
-    // Set max travel hours to 24
-    const maxTravel = screen.getByTestId('filter-maxtravel') as HTMLInputElement;
-    fireEvent.change(maxTravel, { target: { name: 'maxTotalTravelHours', value: '24' } });
-
     // Set blacklist
     const blacklist = screen.getByTestId('filter-blacklist') as HTMLInputElement;
     fireEvent.change(blacklist, { target: { name: 'airlineBlacklist', value: 'JetSMART, Sky Airline' } });
@@ -65,7 +61,6 @@ describe('SearchForm', () => {
       const payload = (createSearch as any).mock.calls[0][0];
       expect(payload.filters.requireCarryOn).toBe(true);
       expect(payload.filters.maxUnplannedStops).toBe(0);
-      expect(payload.filters.maxTotalTravelTime).toBe(24);
       expect(payload.filters.airlineBlacklist).toEqual(['JetSMART', 'Sky Airline']);
     });
   });
