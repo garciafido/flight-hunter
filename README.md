@@ -1,17 +1,19 @@
 # Flight Hunter
 
-Sistema inteligente de monitoreo de ofertas de vuelos. Busca precios continuamente, calcula un puntaje de conveniencia (precio, horarios, escalas, aerolínea) y avisa por email, Telegram y dashboard web cuando aparece una oferta.
+Sistema inteligente de monitoreo de ofertas de vuelos. Scrapeá continuamente Google Flights, calculá un score de conveniencia y recibí alertas por dashboard, email y Telegram cuando aparece una oferta.
 
 ## Características
 
-- **Búsqueda continua**: monitorea precios cada N minutos
-- **Múltiples fuentes**: Google Flights (sin API key), Amadeus, Kiwi y Skyscanner (con API key)
-- **Modo round trip**: ida y vuelta como un solo ticket
-- **Modo split**: tramos separados (one-way) con combos automáticos — ideal para hacer escalas extendidas en una ciudad intermedia
+- **Monitoreo continuo**: scraping de Google Flights cada N minutos vía Playwright
+- **Modelo de waypoints**: definí un origen, una lista ordenada de paradas (con estadías o conexiones), y el sistema explora todas las permutaciones válidas automáticamente
+- **Pins**: fijá el primer o último waypoint para que el optimizador no lo reordene
+- **Equipaje granular**: carry-on global por búsqueda + bolsos facturados por tramo (incluyendo el tramo de regreso)
+- **Transparencia de costos**: precio Google Flights + estimado carry-on + estimado maletas + impuestos argentinos, todo por persona
 - **Score de conveniencia (0-100)**: combina precio, horarios, duración, aerolínea y escalas
 - **Alertas multi-canal**: dashboard en tiempo real, email y Telegram
 - **Anti-spam**: cooldown por canal y deduplicación de vuelos repetidos
-- **Filtros configurables**: blacklists de aerolíneas/aeropuertos, exigir carry-on, máximo de escalas, etc.
+- **Config en caliente**: políticas de equipaje, tasas impositivas y parámetros del sistema editables desde `/system` sin reiniciar
+- **Filtros configurables**: blacklist de aerolíneas, máximo de escalas, máximo de horas de viaje, requerir carry-on
 
 ## Arquitectura
 
@@ -21,7 +23,7 @@ Sistema inteligente de monitoreo de ofertas de vuelos. Busca precios continuamen
 │  (TS + PW)  │    │ (scoring +  │    │ (email +    │    │  (Next.js)  │
 │             │    │  combos)    │    │  telegram)  │    │             │
 └──────┬──────┘    └──────┬──────┘    └─────────────┘    └──────┬──────┘
-       │                  │                                     │
+       │                  │                                      │
        │            ┌─────▼──────┐                               │
        └───────────▶│   Redis    │◀──────────────────────────────┘
                     │ (BullMQ)   │
@@ -32,96 +34,57 @@ Sistema inteligente de monitoreo de ofertas de vuelos. Busca precios continuamen
                     └────────────┘
 ```
 
-4 microservicios Node.js/TypeScript en un monorepo `pnpm + Turborepo`, comunicados por colas BullMQ sobre Redis y persistiendo en PostgreSQL via Prisma.
+4 microservicios Node.js/TypeScript en un monorepo `pnpm + Turborepo`, comunicados por colas BullMQ sobre Redis, persistiendo en PostgreSQL vía Prisma.
 
 ---
 
 ## Instalación
 
-### Requisitos previos (todos los sistemas)
+### Requisitos previos
 
 - **Node.js 22+**
 - **pnpm 9.15+**
 - **Docker Desktop** (para Postgres y Redis)
-- **Git**
 
 ### macOS
 
 ```bash
-# 1. Instalar Homebrew si no lo tenés
+# 1. Homebrew (si no lo tenés)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# 2. Instalar Node, pnpm y Docker
+# 2. Node, pnpm y Docker
 brew install node@22 pnpm
 brew install --cask docker
+open -a Docker   # dejarlo iniciar al menos una vez
 
-# 3. Abrir Docker Desktop al menos una vez para que arranque el daemon
-open -a Docker
-
-# 4. Clonar el proyecto
+# 3. Clonar
 cd ~/Documents/Developments
 git clone <url-del-repo> flight-hunter
 cd flight-hunter
 
-# 5. Instalar dependencias
+# 4. Dependencias
 pnpm install
 
-# 6. Instalar el browser de Playwright (para Google Flights)
+# 5. Browser para Playwright
 pnpm --filter @flight-hunter/scraper exec playwright install chromium
 ```
 
 ### Linux (Ubuntu/Debian)
 
 ```bash
-# 1. Node.js 22 vía NodeSource
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt-get install -y nodejs
-
-# 2. pnpm
 curl -fsSL https://get.pnpm.io/install.sh | sh -
 source ~/.bashrc
-
-# 3. Docker
-sudo apt-get update
 sudo apt-get install -y docker.io docker-compose-plugin
 sudo usermod -aG docker $USER
-# (cerrar sesión y volver a entrar para aplicar el grupo)
+# cerrar sesión y volver a entrar para aplicar el grupo
 
-# 4. Clonar el proyecto
-cd ~
+cd ~/Documents/Developments
 git clone <url-del-repo> flight-hunter
 cd flight-hunter
-
-# 5. Instalar dependencias
 pnpm install
-
-# 6. Instalar el browser de Playwright (con dependencias del sistema)
 pnpm --filter @flight-hunter/scraper exec playwright install --with-deps chromium
-```
-
-### Windows
-
-```powershell
-# 1. Instalar Node.js 22 desde https://nodejs.org/
-#    (elegí la versión LTS para Windows x64)
-
-# 2. Instalar pnpm (en PowerShell como admin)
-iwr https://get.pnpm.io/install.ps1 -useb | iex
-
-# 3. Instalar Docker Desktop desde https://www.docker.com/products/docker-desktop/
-#    Abrirlo al menos una vez y dejar que arranque WSL2 si te lo pide
-
-# 4. Instalar Git desde https://git-scm.com/download/win
-
-# 5. Clonar el proyecto (en cualquier carpeta)
-git clone <url-del-repo> flight-hunter
-cd flight-hunter
-
-# 6. Instalar dependencias
-pnpm install
-
-# 7. Instalar el browser de Playwright
-pnpm --filter @flight-hunter/scraper exec playwright install chromium
 ```
 
 ---
@@ -130,63 +93,47 @@ pnpm --filter @flight-hunter/scraper exec playwright install chromium
 
 ### 1. Crear el archivo `.env`
 
-Copiá el archivo de ejemplo:
-
 ```bash
 cp .env.example .env
 ```
 
-Editá `.env` con los valores reales. Lo mínimo indispensable:
+Mínimo indispensable:
 
 ```env
-DATABASE_URL=postgresql://flight_hunter:flight_hunter_dev@localhost:5432/flight_hunter
+DATABASE_URL=postgresql://flight_hunter:flight_hunter_dev@localhost:5433/flight_hunter
 REDIS_URL=redis://localhost:6379
 ```
 
-Para que las **alertas por email** funcionen, agregá:
+> La base de datos corre en el puerto **5433** (no 5432) por la configuración local.
+
+Para **alertas por email**:
 
 ```env
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=tu@gmail.com
-SMTP_PASS=tu_app_password    # En Gmail: usar "Contraseña de aplicación", no la real
+SMTP_PASS=tu_app_password    # Gmail: usar "Contraseña de aplicación", no la contraseña real
 SMTP_FROM=tu@gmail.com
 SMTP_TO=destinatario@gmail.com
 ```
 
-> **Gmail**: tenés que generar una "Contraseña de aplicación" desde https://myaccount.google.com/apppasswords (requiere 2FA activado).
+> En Gmail: generá una "Contraseña de aplicación" desde https://myaccount.google.com/apppasswords (requiere 2FA).
 
-Para alertas por **Telegram** (opcional):
-
-```env
-TELEGRAM_BOT_TOKEN=123456789:ABCdef...     # Hablar con @BotFather
-TELEGRAM_CHAT_ID=123456789                  # Hablar con @userinfobot
-```
-
-Para usar **fuentes de datos pagas/registradas** (opcional, si las tenés):
+Para **Telegram** (opcional):
 
 ```env
-KIWI_API_KEY=...           # https://tequila.kiwi.com (requiere ser afiliado)
-SKYSCANNER_API_KEY=...     # https://rapidapi.com (pago)
-AMADEUS_API_KEY=...        # https://developers.amadeus.com (free tier 2000 req/mes)
-AMADEUS_API_SECRET=...
+TELEGRAM_BOT_TOKEN=123456789:ABCdef...   # Hablar con @BotFather
+TELEGRAM_CHAT_ID=123456789               # Hablar con @userinfobot
 ```
 
-> Sin ninguna de estas, **igual funciona** usando solamente Google Flights vía scraping.
+Las claves de Kiwi, Skyscanner, Amadeus y Duffel pueden omitirse — esas fuentes están stubbeadas y devuelven resultados vacíos. Solo Google Flights está completamente implementado.
 
 ### 2. Levantar Postgres y Redis
 
 ```bash
 docker compose up redis postgres -d
+docker compose ps   # verificar que aparezcan como (healthy)
 ```
-
-Verificar que estén sanos:
-
-```bash
-docker compose ps
-```
-
-Deberías ver `(healthy)` en ambos.
 
 ### 3. Sincronizar la base de datos
 
@@ -194,42 +141,47 @@ Deberías ver `(healthy)` en ambos.
 pnpm db:push
 ```
 
-Esto crea las tablas en Postgres a partir del schema de Prisma.
+Crea o actualiza las tablas en Postgres a partir del schema de Prisma (sin migraciones).
 
 ---
 
 ## Ejecución
 
-### Modo desarrollo (con hot reload)
+### Modo desarrollo (hot reload)
 
 ```bash
 pnpm dev
 ```
 
-Esto levanta los 4 servicios en paralelo:
+Levanta los 4 servicios en paralelo:
 
-- **scraper**: busca vuelos en intervalos
-- **analyzer**: scorea y detecta ofertas
-- **notifier**: envía alertas (puerto WebSocket: 8080)
-- **dashboard**: UI web en http://localhost:3000
+- **scraper**: busca vuelos según el intervalo de cada búsqueda
+- **analyzer**: scorea resultados, detecta combos y deals
+- **notifier**: envía alertas (WebSocket en puerto 8080)
+- **dashboard**: UI web en **http://localhost:3000**
 
-Abrí **http://localhost:3000** en el navegador.
-
-### Detener todo
+### Detener
 
 ```bash
-# En la terminal de pnpm dev
-Ctrl+C
-
-# Para detener Postgres y Redis
-docker compose down
+Ctrl+C                  # detiene pnpm dev
+docker compose down     # detiene Postgres y Redis
 ```
+
+### Seed canónico
+
+Para recrear la búsqueda de referencia BUE → CUZ con escala en LIM:
+
+```bash
+pnpm seed:current
+```
+
+Esto inserta una búsqueda con LIM (3-4d) + CUZ (7-10d) como waypoints desde BUE.
 
 ### Tests
 
 ```bash
-pnpm test                  # Corre todos los tests de los 4 servicios
-pnpm test:coverage         # Con coverage
+pnpm test             # todos los servicios
+pnpm test:coverage    # con coverage
 ```
 
 ---
@@ -238,108 +190,77 @@ pnpm test:coverage         # Con coverage
 
 ### Opción 1: desde el dashboard web
 
-1. Andá a **http://localhost:3000**
-2. En la barra lateral, click en **Búsquedas**
-3. Click en **+ Nueva búsqueda**
-4. Completá:
-   - **Nombre**: identificador descriptivo, ej. `"Buenos Aires → Cusco Julio 2026"`
-   - **Origen / Destino**: códigos IATA (`BUE`, `CUZ`, `EZE`, `MAD`...)
-   - **Salida desde / hasta**: rango de fechas posibles para la ida
-   - **Días de viaje (mínimo / máximo)**: cuántos días totales dura el viaje
-   - **Pasajeros**
-   - **Modo de búsqueda**: `Round trip` o `Split` (ver abajo)
-   - **Filtros**: aerolíneas blacklist/preferred, máximo de escalas, requerir carry-on, máximo de horas de viaje
-   - **Alertas — precios**: precio máximo (descartar), precio target (alerta "good"), precio dream (alerta "urgent")
-   - **Intervalo de escaneo**: cada cuántos minutos buscar (mínimo recomendado: 15)
-5. **Guardar**
+1. Ir a **http://localhost:3000** → sección **Búsquedas**
+2. Click en **+ Nueva búsqueda**
+3. Completar el formulario:
 
-Una vez guardada, en el próximo tick del scraper (entre inmediato y el intervalo configurado) van a empezar a aparecer resultados.
+**Cabecera**
+- **Nombre**: identificador descriptivo, ej. `"BUE → CUZ Julio 2026"`
+- **Origen**: código IATA del aeropuerto de partida (ej. `BUE`)
+- **Salida desde / hasta**: rango de fechas posibles para la primera salida
+- **Pasajeros**
 
-### Opción 2: desde la API REST (JSON)
+**Constructor de waypoints** (flujo visual)
 
-#### Round trip simple
+El formulario muestra: `[ORIGEN] → [waypoint 1] → [waypoint 2] → ... → [REGRESO]`
 
-Una sola compra (ida + vuelta como un solo ticket):
+Cada tarjeta de waypoint tiene:
+- **Aeropuerto**: código IATA del destino intermedio o final
+- **Tipo**: `estadía` (rango de días min/max) o `conexión` (máximo de horas)
+- **Pin**: `primero` o `último` para fijar ese waypoint en esa posición al calcular permutaciones
+- **Bolsos facturados**: cantidad de maletas en ese tramo (sobreescribe el global)
 
-```bash
-curl -X POST http://localhost:3000/api/searches \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Buenos Aires → Cusco Julio 2026",
-    "mode": "roundtrip",
-    "origin": "BUE",
-    "destination": "CUZ",
-    "departureFrom": "2026-07-25",
-    "departureTo": "2026-07-31",
-    "returnMinDays": 15,
-    "returnMaxDays": 22,
-    "passengers": 2,
-    "filters": {
-      "airlineBlacklist": [],
-      "airlinePreferred": ["LATAM", "Aerolineas Argentinas"],
-      "airportPreferred": { "BUE": ["AEP"] },
-      "airportBlacklist": {},
-      "maxUnplannedStops": 1,
-      "minConnectionTime": 60,
-      "maxConnectionTime": 480,
-      "requireCarryOn": true,
-      "maxTotalTravelTime": 15
-    },
-    "alertConfig": {
-      "scoreThresholds": { "info": 60, "good": 75, "urgent": 90 },
-      "maxPricePerPerson": 600,
-      "targetPricePerPerson": 350,
-      "dreamPricePerPerson": 250,
-      "currency": "USD"
-    },
-    "proxyRegions": ["AR"],
-    "scanIntervalMin": 15
-  }'
-```
+El ancla **REGRESO** permite configurar los bolsos facturados del tramo de vuelta.
 
-#### Modo Split (recomendado para escalas extendidas)
+**Filtros**
+- **Requerir carry-on**: toggle global (aplica a todos los tramos)
+- **Máximo de escalas**
+- **Máximo de horas de viaje**
+- **Blacklist de aerolíneas**
 
-Compra los tramos por separado. Es más caro de procesar pero permite **fechas exactas en cada tramo** y **escalas extendidas reales** en ciudades intermedias.
+**Precios y alertas**
+- **Precio máximo**: descartar resultados por encima de este valor
+- **Precio target**: umbral para alerta nivel `good`
+- **Precio dream**: umbral para alerta nivel `urgent`
+- **Intervalo de escaneo**: cada cuántos minutos buscar (mínimo recomendado: 15)
 
-Ejemplo: viaje a Cusco con 3-4 días en Lima en la vuelta:
+4. **Guardar** — los resultados empiezan a aparecer en el próximo ciclo del scraper.
+
+Para editar una búsqueda existente: ir a `/searches/[id]/settings`.
+
+### Opción 2: desde la API REST
+
+#### Búsqueda con waypoints (formato actual)
+
+Ejemplo: BUE → CUZ con escala en LIM de 3-4 días — el motor prueba ambas permutaciones (LIM→CUZ y CUZ→LIM):
 
 ```bash
 curl -X POST http://localhost:3000/api/searches \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "BUE → CUZ con escala en Lima a la vuelta",
-    "mode": "split",
+    "name": "BUE → CUZ con LIM Julio 2026",
     "origin": "BUE",
-    "destination": "CUZ",
     "departureFrom": "2026-07-25",
     "departureTo": "2026-07-31",
-    "returnMinDays": 15,
-    "returnMaxDays": 30,
     "passengers": 2,
-    "legs": [
+    "waypoints": [
       {
-        "origin": "BUE",
-        "destination": "CUZ",
-        "departureFrom": "2026-07-25",
-        "departureTo": "2026-07-31"
+        "airport": "LIM",
+        "gap": { "type": "stay", "minDays": 3, "maxDays": 4 },
+        "checkedBags": 0
       },
       {
-        "origin": "CUZ",
-        "destination": "BUE",
-        "departureFrom": "2026-08-09",
-        "departureTo": "2026-08-22",
-        "stopover": { "airport": "LIM", "minDays": 3, "maxDays": 4 }
+        "airport": "CUZ",
+        "gap": { "type": "stay", "minDays": 7, "maxDays": 10 },
+        "pin": "last",
+        "checkedBags": 1
       }
     ],
+    "returnCheckedBags": 1,
     "filters": {
-      "airlineBlacklist": [],
-      "airlinePreferred": ["LATAM"],
-      "airportPreferred": { "BUE": ["AEP"] },
-      "airportBlacklist": {},
-      "maxUnplannedStops": 1,
-      "minConnectionTime": 60,
-      "maxConnectionTime": 480,
       "requireCarryOn": true,
+      "airlineBlacklist": [],
+      "maxUnplannedStops": 1,
       "maxTotalTravelTime": 15
     },
     "alertConfig": {
@@ -349,42 +270,79 @@ curl -X POST http://localhost:3000/api/searches \
       "dreamPricePerPerson": 300,
       "currency": "USD"
     },
-    "proxyRegions": ["AR"],
     "scanIntervalMin": 15
   }'
 ```
 
-En modo split, el `analyzer` toma los mejores N resultados de cada tramo y arma todas las combinaciones válidas (respetando que la fecha del tramo 2 sea posterior al tramo 1) y scorea el combo entero. Las alertas que recibís incluyen los N tramos del combo con los links de reserva por separado.
+**Notas sobre waypoints:**
+- El array `waypoints` define los destinos intermedios y final en cualquier orden; el motor genera todas las permutaciones
+- `pin: "first"` fija ese waypoint como primera parada (no se reordena)
+- `pin: "last"` fija ese waypoint como última parada antes del regreso
+- `gap.type: "connection"` con `maxHours` modela una escala técnica (no estadía)
+- `checkedBags` en cada waypoint indica maletas en ese tramo específico
+- `returnCheckedBags` es la cantidad de maletas en el vuelo de regreso
 
-#### Listar / actualizar / borrar búsquedas
+#### Búsqueda directa (un solo destino)
 
 ```bash
-# Listar
+curl -X POST http://localhost:3000/api/searches \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "BUE → MAD Diciembre 2026",
+    "origin": "BUE",
+    "departureFrom": "2026-12-15",
+    "departureTo": "2026-12-22",
+    "passengers": 1,
+    "waypoints": [
+      {
+        "airport": "MAD",
+        "gap": { "type": "stay", "minDays": 10, "maxDays": 15 }
+      }
+    ],
+    "returnCheckedBags": 0,
+    "filters": {
+      "requireCarryOn": false,
+      "airlineBlacklist": ["Aerolíneas Argentinas"],
+      "maxUnplannedStops": 2,
+      "maxTotalTravelTime": 20
+    },
+    "alertConfig": {
+      "scoreThresholds": { "info": 60, "good": 75, "urgent": 90 },
+      "maxPricePerPerson": 900,
+      "targetPricePerPerson": 600,
+      "dreamPricePerPerson": 450,
+      "currency": "USD"
+    },
+    "scanIntervalMin": 30
+  }'
+```
+
+#### Listar / actualizar / borrar
+
+```bash
+# Listar todas
 curl http://localhost:3000/api/searches
 
-# Ver una específica
+# Ver una
 curl http://localhost:3000/api/searches/{id}
 
-# Actualizar (PUT — podés mandar solo los campos que querés cambiar)
+# Actualizar (campos parciales)
 curl -X PUT http://localhost:3000/api/searches/{id} \
   -H "Content-Type: application/json" \
   -d '{ "scanIntervalMin": 30, "active": false }'
 
-# Borrar (soft delete: pone active=false)
+# Borrar (soft delete)
 curl -X DELETE http://localhost:3000/api/searches/{id}
 ```
 
-#### Otros endpoints útiles
+#### Otros endpoints
 
 ```bash
-# Ver últimas alertas
+# Últimas alertas
 curl http://localhost:3000/api/alerts
 
-# Ver últimos resultados de una búsqueda
+# Resultados de una búsqueda
 curl "http://localhost:3000/api/searches/{id}/results?sort=price&limit=10"
-
-# Ver mejores combos (solo para split mode)
-curl http://localhost:3000/api/searches/{id}/combos
 
 # Estado del sistema (DB + Redis + colas)
 curl http://localhost:3000/api/system
@@ -392,43 +350,82 @@ curl http://localhost:3000/api/system
 
 ---
 
-## Glosario rápido
+## Configuración en caliente (`/system`)
+
+La página `/system` del dashboard expone una sección **Configuración** donde podés editar sin reiniciar:
+
+| Parámetro | Descripción |
+|---|---|
+| **Políticas de equipaje por aerolínea** | Costo en USD de carry-on y maleta facturada por aerolínea |
+| **Tasas impositivas AR** | PAIS % + RG5232 % (default: 30% + 45% = multiplicador 1.75x) |
+| **Dedup TTL del notifier** | Tiempo en segundos antes de que una misma alerta pueda volver a enviarse |
+| **Cooldown por canal** | Tiempo mínimo entre alertas por email/Telegram |
+| **Max fechas por par** | Cuántas fechas escanear por combinación origen-destino |
+| **Max waypoints** | Límite de waypoints por búsqueda |
+
+Los cambios se persisten en `system_settings.runtime_config` (JSONB) y se recargan cada 30 segundos en todos los servicios.
+
+---
+
+## Cómo se muestran las alertas
+
+Cada alerta incluye:
+
+- **Timeline visual**: punto de salida → punto de llegada con duración del vuelo y aerolínea, separadores de estadía entre tramos (🏨/🏖)
+- **Badges de waypoints**: resumen del itinerario generado
+- **Desglose de costos por persona**:
+  - Precio Google Flights (incluye impuestos aeroportuarios)
+  - Estimado carry-on (según política de la aerolínea)
+  - Estimado maletas facturadas (por tramo)
+  - Impuestos argentinos PAIS + RG5232 (como línea separada)
+- **Fuente**: "Fuente: Google Flights · incluye impuestos y tasas aeroportuarias"
+- **Botón copiar para WhatsApp**: genera texto formateado para compartir
+
+---
+
+## Glosario
 
 | Término | Qué es |
 |---|---|
-| **Round trip** | Comprar ida y vuelta como un solo ticket |
-| **Split** | Comprar la ida y la vuelta como tickets separados (uno o más tramos) |
-| **Stopover extendido** | Quedarse N días en una ciudad intermedia (no es una escala técnica corta) |
-| **Score** | Puntaje 0-100 que combina precio, horarios, escalas, aerolínea, etc. |
-| **Combo** | (solo en split) Combinación de un vuelo por tramo, scoreada como conjunto |
-| **Alert level** | `info` (solo dashboard) / `good` (+ email) / `urgent` (+ Telegram) |
+| **Waypoint** | Destino intermedio o final dentro de un viaje. Cada waypoint tiene aeropuerto, tipo de pausa (estadía o conexión) y opcionalmente un pin y cantidad de maletas |
+| **Pin** | Restricción que fija un waypoint como `first` (primera parada) o `last` (última parada), impidiendo que el optimizador lo reordene al generar permutaciones |
+| **Estadía** (`stay`) | Pausa de N a M días en un aeropuerto; el pasajero realmente para ahí |
+| **Conexión** (`connection`) | Escala técnica con máximo de horas; el optimizador la trata como tránsito |
+| **Per-tramo** | Configuración que aplica a un tramo específico del viaje (ej. `checkedBags` por waypoint) en lugar de al viaje completo |
+| **Runtime config** | Parámetros del sistema editables desde `/system` sin reiniciar los servicios; se recargan cada 30s |
+| **Score** | Puntaje 0-100 que combina precio, horarios, duración, aerolínea y cantidad de escalas |
+| **Alert level** | `info` (solo dashboard) / `good` (+ email) / `urgent` (+ email + Telegram) |
+| **Permutación** | Cada ordenamiento posible de los waypoints no pineados; el motor evalúa todas y devuelve el mejor combo |
+| **returnCheckedBags** | Cantidad de maletas facturadas específicamente en el vuelo de regreso al origen |
+
+---
 
 ## Estructura del proyecto
 
 ```
 flight-hunter/
-├── packages/shared/          # Tipos, schema Prisma, schemas zod, utils
+├── packages/shared/          # Tipos TS, schema Prisma, schemas Zod, utils
 ├── services/
-│   ├── scraper/              # Búsqueda y normalización de vuelos
-│   ├── analyzer/             # Scoring, filtros, deal detection, combos
-│   ├── notifier/             # Email, Telegram, WebSocket
-│   └── dashboard/            # Next.js (API routes + UI)
-├── docs/
-│   └── superpowers/
-│       ├── specs/            # Diseño del sistema
-│       └── plans/            # Plan de implementación
+│   ├── scraper/              # Playwright scraping, normalización de vuelos
+│   ├── analyzer/             # Scoring, permutaciones de waypoints, deal detection
+│   ├── notifier/             # Email (SMTP), Telegram, WebSocket
+│   └── dashboard/            # Next.js 15 (API routes + UI)
 ├── docker-compose.yml
 ├── docker-compose.dev.yml
 └── .env.example
 ```
 
+---
+
 ## Troubleshooting
 
 | Problema | Solución |
 |---|---|
-| `pnpm db:push` falla con `DATABASE_URL not found` | Asegurate de tener `.env` en la raíz con `DATABASE_URL` |
-| `docker compose ps` no muestra los contenedores como healthy | Esperá ~30s después de `docker compose up`, después chequeá `docker compose logs postgres` |
-| El scraper no encuentra vuelos | Mirá los logs de `pnpm dev`, sección `@flight-hunter/scraper`. Si dice `Source google-flights: 0 result(s)`, probablemente la página de Google cambió selectores; se requiere actualizar el scraper |
-| Emails con error `EENVELOPE: No recipients defined` | Falta `SMTP_TO` en `.env` |
-| Telegram con error `404 Not Found` | El `TELEGRAM_BOT_TOKEN` está vacío o mal. El sistema sigue funcionando con email y dashboard |
-| Cambié código y no veo el cambio | El `dashboard` (Next.js) tiene hot reload. Los servicios de backend (scraper/analyzer/notifier) usan `tsx watch` que también reinicia. Si no, parar `pnpm dev` con Ctrl+C y volver a arrancar |
+| `pnpm db:push` falla con `DATABASE_URL not found` | Verificar que `.env` exista en la raíz con `DATABASE_URL` apuntando al puerto 5433 |
+| `docker compose ps` no muestra los contenedores como healthy | Esperar ~30s después de `docker compose up`; revisar `docker compose logs postgres` |
+| El scraper no encuentra vuelos | Revisar logs de `@flight-hunter/scraper`. Si dice `Source google-flights: 0 result(s)`, Google cambió sus selectores; hay que actualizar el scraper |
+| Emails con `EENVELOPE: No recipients defined` | Falta `SMTP_TO` en `.env` |
+| Telegram con `404 Not Found` | `TELEGRAM_BOT_TOKEN` vacío o incorrecto; el sistema sigue funcionando con email y dashboard |
+| Cambié código y no veo el cambio | El dashboard (Next.js) tiene hot reload; los servicios backend usan `tsx watch`. Si persiste, reiniciar `pnpm dev` |
+| Los costos de equipaje no cuadran | Revisar y actualizar las políticas de aerolínea en `/system` → Configuración |
+| Las permutaciones no incluyen una ruta esperada | Verificar que no haya un `pin` incorrecto en algún waypoint que esté bloqueando el reordenamiento |
