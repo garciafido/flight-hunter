@@ -6,8 +6,14 @@ export interface FilterResult {
   reason?: string;
 }
 
+export interface FilterOptions {
+  /** Global max connection hours from SearchConfig. Used to reject flights
+   *  with excessive layovers (duration way longer than expected flying time). */
+  maxConnectionHours?: number;
+}
+
 export class FilterEngine {
-  apply(flight: FlightResult, filters: SearchFilters): FilterResult {
+  apply(flight: FlightResult, filters: SearchFilters, options?: FilterOptions): FilterResult {
     // Airline blacklist
     if (filters.airlineBlacklist.includes(flight.outbound.airline)) {
       return { passed: false, reason: `Airline ${flight.outbound.airline} is blacklisted` };
@@ -16,7 +22,7 @@ export class FilterEngine {
       return { passed: false, reason: `Airline ${flight.inbound.airline} is blacklisted` };
     }
 
-    // Airport blacklist - check outbound departure and inbound arrival airports
+    // Airport blacklist
     const outboundDep = flight.outbound.departure.airport;
     const outboundArr = flight.outbound.arrival.airport;
     const inboundDep = flight.inbound.departure.airport;
@@ -42,15 +48,15 @@ export class FilterEngine {
       return { passed: false, reason: 'Carry-on not included' };
     }
 
-    // Max total travel time (filter expressed in HOURS).
-    // Skip when source returns 0 duration (e.g. Google Flights scraping)
-    // or when the user set it to 0 (= unlimited).
-    const totalTravelMinutes = flight.outbound.durationMinutes + flight.inbound.durationMinutes;
+    // Max travel time per leg (in hours, 0 = unlimited).
+    // For waypoint model, each scraped result is a one-way leg, so we only
+    // check outbound.durationMinutes (inbound is a stub in one-way mode).
+    const legDuration = flight.outbound.durationMinutes;
     const maxTravelMinutes = filters.maxTotalTravelTime * 60;
-    if (totalTravelMinutes > 0 && maxTravelMinutes > 0 && totalTravelMinutes > maxTravelMinutes) {
+    if (legDuration > 0 && maxTravelMinutes > 0 && legDuration > maxTravelMinutes) {
       return {
         passed: false,
-        reason: `Total travel time ${totalTravelMinutes}min exceeds max ${maxTravelMinutes}min`,
+        reason: `Flight duration ${legDuration}min exceeds max ${maxTravelMinutes}min`,
       };
     }
 
@@ -61,11 +67,21 @@ export class FilterEngine {
         reason: `Outbound stops ${flight.outbound.stops} exceeds max ${filters.maxUnplannedStops}`,
       };
     }
-    if (flight.inbound.stops > filters.maxUnplannedStops) {
-      return {
-        passed: false,
-        reason: `Inbound stops ${flight.inbound.stops} exceeds max ${filters.maxUnplannedStops}`,
-      };
+
+    // Max layover: for flights with stops, reject if the total duration implies
+    // an excessive layover. Heuristic: a flight with N stops should take at most
+    // (N+1) × maxConnectionHours. E.g., 1-stop flight with maxConnectionHours=6
+    // → max total ~12h. A 14-hour flight with 1 stop is rejected.
+    // This uses the global maxConnectionHours from SearchConfig.
+    const maxConnHours = options?.maxConnectionHours;
+    if (maxConnHours && maxConnHours > 0 && flight.outbound.stops > 0 && legDuration > 0) {
+      const maxDurationMinutes = (flight.outbound.stops + 1) * maxConnHours * 60;
+      if (legDuration > maxDurationMinutes) {
+        return {
+          passed: false,
+          reason: `Flight ${legDuration}min with ${flight.outbound.stops} stop(s) exceeds max layover estimate (${maxDurationMinutes}min for maxConnection=${maxConnHours}h)`,
+        };
+      }
     }
 
     return { passed: true };

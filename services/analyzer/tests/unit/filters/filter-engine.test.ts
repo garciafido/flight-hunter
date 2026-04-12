@@ -172,23 +172,23 @@ describe('FilterEngine', () => {
   });
 
   describe('max total travel time', () => {
-    it('rejects flight exceeding max travel time (filter is in hours)', () => {
-      // outbound=480min + inbound=480min = 960min total. Max 13h = 780min < 960min → reject
-      const result = engine.apply(makeFlight(), makeFilters({ maxTotalTravelTime: 13 }));
+    it('rejects one-way flight exceeding max travel time (filter is in hours)', () => {
+      // outbound=480min (8h). Max 7h = 420min → reject
+      const result = engine.apply(makeFlight(), makeFilters({ maxTotalTravelTime: 7 }));
       expect(result.passed).toBe(false);
-      expect(result.reason).toContain('960');
-      expect(result.reason).toContain('780');
+      expect(result.reason).toContain('480');
+      expect(result.reason).toContain('420');
     });
 
     it('passes flight within max travel time', () => {
-      // 960min total, max 17h = 1020min → pass
-      const result = engine.apply(makeFlight(), makeFilters({ maxTotalTravelTime: 17 }));
+      // outbound=480min (8h), max 9h = 540min → pass
+      const result = engine.apply(makeFlight(), makeFilters({ maxTotalTravelTime: 9 }));
       expect(result.passed).toBe(true);
     });
 
     it('passes flight exactly at max travel time', () => {
-      // 960min = 16h
-      const result = engine.apply(makeFlight(), makeFilters({ maxTotalTravelTime: 16 }));
+      // 480min = 8h
+      const result = engine.apply(makeFlight(), makeFilters({ maxTotalTravelTime: 8 }));
       expect(result.passed).toBe(true);
     });
 
@@ -200,9 +200,37 @@ describe('FilterEngine', () => {
     it('passes flight when source returns 0 duration (cannot enforce)', () => {
       const flight = makeFlight({
         outbound: { ...makeFlight().outbound, durationMinutes: 0 },
-        inbound: { ...makeFlight().inbound, durationMinutes: 0 },
       });
       const result = engine.apply(flight, makeFilters({ maxTotalTravelTime: 5 }));
+      expect(result.passed).toBe(true);
+    });
+  });
+
+  describe('max layover (maxConnectionHours)', () => {
+    it('rejects a 1-stop flight whose duration implies excessive layover', () => {
+      // 1 stop, 840min (14h). maxConnectionHours=6 → max total = (1+1)*6*60 = 720min. 840 > 720 → reject
+      const flight = makeFlight({
+        outbound: { ...makeFlight().outbound, stops: 1, durationMinutes: 840 },
+      });
+      const result = engine.apply(flight, makeFilters(), { maxConnectionHours: 6 });
+      expect(result.passed).toBe(false);
+      expect(result.reason).toContain('840');
+    });
+
+    it('accepts a 1-stop flight within reasonable layover', () => {
+      // 1 stop, 600min (10h). maxConnectionHours=6 → max = 720min. 600 < 720 → pass
+      const flight = makeFlight({
+        outbound: { ...makeFlight().outbound, stops: 1, durationMinutes: 600 },
+      });
+      const result = engine.apply(flight, makeFilters(), { maxConnectionHours: 6 });
+      expect(result.passed).toBe(true);
+    });
+
+    it('does not apply to nonstop flights', () => {
+      const flight = makeFlight({
+        outbound: { ...makeFlight().outbound, stops: 0, durationMinutes: 1000 },
+      });
+      const result = engine.apply(flight, makeFilters(), { maxConnectionHours: 6 });
       expect(result.passed).toBe(true);
     });
   });
@@ -219,18 +247,6 @@ describe('FilterEngine', () => {
       expect(result.passed).toBe(false);
       expect(result.reason).toContain('3');
       expect(result.reason).toContain('2');
-    });
-
-    it('rejects inbound flight with too many stops', () => {
-      const flight = makeFlight({
-        inbound: {
-          ...makeFlight().inbound,
-          stops: 3,
-        },
-      });
-      const result = engine.apply(flight, makeFilters({ maxUnplannedStops: 2 }));
-      expect(result.passed).toBe(false);
-      expect(result.reason).toContain('3');
     });
 
     it('passes flight with acceptable stops', () => {

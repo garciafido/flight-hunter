@@ -52,7 +52,9 @@ export class AnalyzerWorker {
     };
 
     // Filter
-    const filterResult = this.deps.filterEngine.apply(flight, filters);
+    const filterResult = this.deps.filterEngine.apply(flight, filters, {
+      maxConnectionHours: searchConfig.maxConnectionHours,
+    });
     if (!filterResult.passed) {
       // Filtered out - still save but with no alert
       const pricePerPerson = normalizePricePerPerson(
