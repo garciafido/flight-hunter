@@ -267,11 +267,15 @@ export class AnalyzerWorker {
     const firstLegId = (best.combo[0] as any).id as string | undefined;
     if (alertLevel && firstLegId) {
       try {
-        // Build per-arrival-airport checked-bag map from the waypoint config.
+        // Build per-arrival-airport maps from the waypoint config.
         const checkedBagsByArrival: Record<string, number> = {};
+        const passengersByArrival: Record<string, number> = {};
         for (const wp of waypoints) {
           if (wp.checkedBags && wp.checkedBags > 0) {
             checkedBagsByArrival[wp.airport] = wp.checkedBags;
+          }
+          if (wp.passengers && wp.passengers > 0) {
+            passengersByArrival[wp.airport] = wp.passengers;
           }
         }
 
@@ -287,6 +291,9 @@ export class AnalyzerWorker {
           requireCarryOn: searchConfig.filters.requireCarryOn,
           checkedBagsByArrival,
           returnCheckedBags: (searchRecord as any).returnCheckedBags ?? 0,
+          globalPassengers: searchConfig.passengers,
+          passengersByArrival,
+          returnPassengers: (searchRecord as any).returnPassengers ?? undefined,
         });
       } catch (err) {
         console.error('Failed to publish combo alert:', err instanceof Error ? err.message : err);

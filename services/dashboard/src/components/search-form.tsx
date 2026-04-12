@@ -22,6 +22,8 @@ export interface WaypointFormEntry {
   pin: 'first' | 'last' | 'none';
   /** Checked bags to bring on the leg arriving at this waypoint. Default 0. */
   checkedBags: number;
+  /** Override passenger count for this leg. Empty string = inherit global. */
+  passengers: number | '';
 }
 
 export interface FormState {
@@ -39,8 +41,9 @@ export interface FormState {
   maxTotalTravelHours: number; // 0 = unlimited
   airlineBlacklist: string;     // comma-separated, parsed to string[] on submit
   // Checked bags on the final return leg (per passenger).
-  // Outbound bags are configured per-waypoint via WaypointFormEntry.checkedBags.
   returnCheckedBags: number;
+  // Override passenger count for the return leg. '' = inherit global.
+  returnPassengers: number | '';
   // Alerts
   scoreThresholdInfo: number;
   scoreThresholdGood: number;
@@ -63,6 +66,7 @@ function newWaypointEntry(): WaypointFormEntry {
     maxHours: 6,
     pin: 'none',
     checkedBags: 0,
+    passengers: '',
   };
 }
 
@@ -96,6 +100,7 @@ export function searchRowToFormState(row: any): FormState {
           maxHours: wp.gap?.maxHours ?? 6,
           pin: wp.pin === 'first' || wp.pin === 'last' ? wp.pin : 'none',
           checkedBags: wp.checkedBags ?? 0,
+          passengers: wp.passengers ?? '',
         }))
       : [newWaypointEntry()],
     requireCarryOn: filters.requireCarryOn ?? false,
@@ -103,6 +108,7 @@ export function searchRowToFormState(row: any): FormState {
     maxTotalTravelHours: filters.maxTotalTravelTime ?? 0,
     airlineBlacklist: Array.isArray(filters.airlineBlacklist) ? filters.airlineBlacklist.join(', ') : '',
     returnCheckedBags: row.returnCheckedBags ?? 0,
+    returnPassengers: row.returnPassengers ?? '',
     scoreThresholdInfo: alertConfig.scoreThresholds?.info ?? 30,
     scoreThresholdGood: alertConfig.scoreThresholds?.good ?? 60,
     scoreThresholdUrgent: alertConfig.scoreThresholds?.urgent ?? 80,
@@ -129,6 +135,7 @@ const DEFAULT_FORM_STATE: FormState = {
   maxTotalTravelHours: 0,
   airlineBlacklist: '',
   returnCheckedBags: 0,
+  returnPassengers: '',
   scoreThresholdInfo: 30,
   scoreThresholdGood: 60,
   scoreThresholdUrgent: 80,
@@ -260,6 +267,7 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
         departureTo: form.departureTo,
         maxConnectionHours: Number(form.maxConnectionHours),
         returnCheckedBags: Number(form.returnCheckedBags),
+        ...(form.returnPassengers !== '' ? { returnPassengers: Number(form.returnPassengers) } : {}),
         waypoints: form.waypoints.map(wp => ({
           airport: wp.airport,
           gap: wp.type === 'stay'
@@ -267,6 +275,7 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
             : { type: 'connection' as const, maxHours: Number(wp.maxHours) },
           ...(wp.pin !== 'none' ? { pin: wp.pin } : {}),
           checkedBags: Number(wp.checkedBags) || 0,
+          ...(wp.passengers !== '' ? { passengers: Number(wp.passengers) } : {}),
         })),
         filters,
         alertConfig: {
@@ -500,7 +509,7 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
                   </select>
                 </div>
                 <div>
-                  <label style={labelStyle}>Valijas que llevo</label>
+                  <label style={labelStyle}>Valijas</label>
                   <input
                     type="number"
                     data-testid="waypoint-checkedbags"
@@ -508,7 +517,20 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
                     max="5"
                     value={wp.checkedBags}
                     onChange={e => updateWaypoint(i, { checkedBags: Number(e.target.value) })}
-                    style={{ ...inputStyle, width: 80 }}
+                    style={{ ...inputStyle, width: 60 }}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Pasajeros</label>
+                  <input
+                    type="number"
+                    data-testid="waypoint-passengers"
+                    min="1"
+                    max="9"
+                    placeholder={String(form.passengers)}
+                    value={wp.passengers}
+                    onChange={e => updateWaypoint(i, { passengers: e.target.value === '' ? '' : Number(e.target.value) })}
+                    style={{ ...inputStyle, width: 60 }}
                   />
                 </div>
               </div>
@@ -523,21 +545,37 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
         ))}
 
         <div style={connectorStyle} />
-        {/* Return anchor — also carries the return-leg checked-bag count */}
+        {/* Return anchor — carries return-leg checked-bag count + optional passenger override */}
         <div style={{ ...waypointAnchorStyle, paddingBottom: 12 }}>
           <div>[REGRESO] {form.origin || '???'}</div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 8, fontSize: 12, fontWeight: 500 }}>
-            <span>Valijas en el regreso:</span>
-            <input
-              type="number"
-              data-testid="return-checkedbags"
-              name="returnCheckedBags"
-              min="0"
-              max="5"
-              value={form.returnCheckedBags}
-              onChange={handleChange}
-              style={{ ...inputStyle, width: 60, padding: '2px 6px' }}
-            />
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'center', marginTop: 8, fontSize: 12, fontWeight: 500 }}>
+            <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              Valijas:
+              <input
+                type="number"
+                data-testid="return-checkedbags"
+                name="returnCheckedBags"
+                min="0"
+                max="5"
+                value={form.returnCheckedBags}
+                onChange={handleChange}
+                style={{ ...inputStyle, width: 50, padding: '2px 6px' }}
+              />
+            </span>
+            <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              Pasajeros:
+              <input
+                type="number"
+                data-testid="return-passengers"
+                name="returnPassengers"
+                min="1"
+                max="9"
+                placeholder={String(form.passengers)}
+                value={form.returnPassengers}
+                onChange={handleChange}
+                style={{ ...inputStyle, width: 50, padding: '2px 6px' }}
+              />
+            </span>
           </div>
         </div>
 

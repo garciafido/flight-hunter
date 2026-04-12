@@ -118,43 +118,59 @@ export class Publisher {
     checkedBagsByArrival?: Record<string, number>;
     /** Checked bags on the final return leg back to origin. */
     returnCheckedBags?: number;
+    /** Global passenger count (default for all legs). */
+    globalPassengers: number;
+    /** Per-arrival-airport passenger overrides. */
+    passengersByArrival?: Record<string, number>;
+    /** Passenger override for the return leg. */
+    returnPassengers?: number;
   }): Promise<void> {
     const {
       searchId, flightResultId, legs, totalPricePerPerson, score, scoreBreakdown,
       alertLevel, waypoints, requireCarryOn,
       checkedBagsByArrival = {},
       returnCheckedBags = 0,
+      globalPassengers,
+      passengersByArrival = {},
     } = opts;
     const firstLeg = legs[0];
     const lastLeg = legs[legs.length - 1];
 
-    // All baggage costs are PER PERSON (consistent with totalPricePerPerson).
-    // The user can mentally multiply by passengers if they want the group total.
+    // Resolve per-leg passenger count: waypoint override → global.
+    const lastIdx = legs.length - 1;
+    const returnPax = opts.returnPassengers ?? globalPassengers;
+    function legPassengers(legIdx: number, arrivalAirport: string): number {
+      if (legIdx === lastIdx) return returnPax;
+      return passengersByArrival[arrivalAirport] ?? globalPassengers;
+    }
 
-    // Per-leg carry-on estimate (only when the user requested carry-on).
+    // Per-leg carry-on cost = airline fee × pax (only when requested).
     const perLegCarryOn = requireCarryOn
-      ? legs.map((l) => estimateCarryOnUSD(l.outbound.airline))
+      ? legs.map((l, i) => estimateCarryOnUSD(l.outbound.airline) * legPassengers(i, l.outbound.arrival.airport))
       : undefined;
     const totalCarryOn = perLegCarryOn?.reduce((a, b) => a + b, 0);
 
-    // Per-leg checked-bag estimate. The leg arriving at waypoint X uses
-    // `waypoint[X].checkedBags`; the final return leg (arriving at origin)
-    // uses `returnCheckedBags`.
-    const lastIdx = legs.length - 1;
+    // Per-leg checked-bag cost = airline fee × bags × pax.
     const perLegCheckedBag = legs.map((l, i) => {
       const arrivalAirport = l.outbound.arrival.airport;
       const bags = i === lastIdx
         ? returnCheckedBags
         : (checkedBagsByArrival[arrivalAirport] ?? 0);
       if (bags === 0) return 0;
-      return estimateCheckedBagUSD(l.outbound.airline) * bags;
+      return estimateCheckedBagUSD(l.outbound.airline) * bags * legPassengers(i, arrivalAirport);
     });
     const totalCheckedBag = perLegCheckedBag.reduce((a, b) => a + b, 0);
     const checkedBagFieldOrUndefined = totalCheckedBag > 0 ? totalCheckedBag : undefined;
 
-    // Argentine total: includes baggage extras (you pay them too with the same card).
-    const trueTotalUSD = totalPricePerPerson + (totalCarryOn ?? 0) + totalCheckedBag;
-    const argTotal = estimateArgentineTotalUSD(trueTotalUSD);
+    // Per-leg ticket cost (for group total display).
+    const groupTicketTotal = legs.reduce(
+      (sum, l, i) => sum + l.totalPrice * legPassengers(i, l.outbound.arrival.airport),
+      0,
+    );
+
+    // Argentine total: (group ticket + carry-on + checked bags) ÷ global pax to get effective per-person.
+    const effectivePerPerson = (groupTicketTotal + (totalCarryOn ?? 0) + totalCheckedBag) / Math.max(1, globalPassengers);
+    const argTotal = estimateArgentineTotalUSD(effectivePerPerson);
 
     const alertJob: AlertJob = {
       searchId,

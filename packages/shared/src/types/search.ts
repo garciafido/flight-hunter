@@ -13,6 +13,12 @@ export interface Waypoint {
    * Default 0. Used by the analyzer to compute baggage cost per leg.
    */
   checkedBags?: number;
+  /**
+   * Override the global passenger count for the leg arriving at this waypoint.
+   * Omit or null to inherit from SearchConfig.passengers.
+   * Example: 2 people go to LIM, but only 1 continues to CUZ.
+   */
+  passengers?: number;
 }
 
 export interface TimeRange {
@@ -53,6 +59,8 @@ export interface SearchConfig {
   // Checked bags per passenger on the FINAL leg back to origin.
   // (Outbound bags are now configured per-waypoint via Waypoint.checkedBags.)
   returnCheckedBags?: number;
+  // Override passenger count for the final return leg. Omit to inherit global.
+  returnPassengers?: number;
   proxyRegions: ProxyRegion[];
   scanIntervalMin: number;
   active: boolean;

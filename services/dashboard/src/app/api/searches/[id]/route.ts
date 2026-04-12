@@ -25,6 +25,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (body.waypoints !== undefined) data.waypoints = body.waypoints;
     if (body.maxConnectionHours !== undefined) data.maxConnectionHours = body.maxConnectionHours;
     if (body.returnCheckedBags !== undefined) data.returnCheckedBags = body.returnCheckedBags;
+    if (body.returnPassengers !== undefined) data.returnPassengers = body.returnPassengers;
     if (body.filters !== undefined) data.filters = body.filters;
     if (body.alertConfig !== undefined) data.alertConfig = body.alertConfig;
     if (body.proxyRegions !== undefined) data.proxyRegions = body.proxyRegions;

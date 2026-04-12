@@ -24,6 +24,7 @@ model Search {
   maxConnectionHours  Int      @default(6) @map("max_connection_hours")
   outboundCheckedBags Int      @default(0) @map("outbound_checked_bags")
   returnCheckedBags   Int      @default(0) @map("return_checked_bags")
+  returnPassengers    Int?     @map("return_passengers")
   destinationMode       String   @default("single") @map("destination_mode")
   destinationCandidates Json?    @map("destination_candidates")
   windowMode            Boolean  @default(false) @map("window_mode")
