@@ -21,15 +21,11 @@ export class OutlierDetector {
     source: string,
     avg48h: number | null,
   ): Promise<OutlierResult> {
-    // 1. Historical outlier: price < 30% of 48h average
-    if (avg48h !== null && avg48h > 0) {
-      if (pricePerPerson < avg48h * 0.3) {
-        return {
-          suspicious: true,
-          suspicionReason: 'price too low vs historical avg',
-        };
-      }
-    }
+    // 1. Historical outlier: disabled for now.
+    // The avg48h is computed across ALL routes in the search (BUE→CUZ, CUZ→LIM, etc.)
+    // so a legitimately cheap short-haul (CUZ→LIM $28) gets flagged when compared
+    // against the average that includes expensive long-hauls (BUE→CUZ $150).
+    // TODO: re-enable when avg48h is computed per-route, not per-search.
 
     // 2. Cross-source validation: last 30 minutes from other sources
     const cutoff = new Date(Date.now() - 30 * 60 * 1000);

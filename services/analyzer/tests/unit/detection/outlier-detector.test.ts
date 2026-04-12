@@ -24,13 +24,12 @@ describe('OutlierDetector', () => {
     expect(result.suspicious).toBe(false);
   });
 
-  it('flags price too low vs historical avg (< 30% of avg)', async () => {
+  it('does NOT flag price vs historical avg (disabled — avg is per-search not per-route)', async () => {
     const prisma = makePrisma([]);
     detector = new OutlierDetector(prisma);
-    // avg48h = 500, price = 100 (20% of avg) → suspicious
+    // avg48h = 500, price = 100 (20% of avg) → was suspicious, now disabled
     const result = await detector.check('search-1', 100, 'kiwi', 500);
-    expect(result.suspicious).toBe(true);
-    expect(result.suspicionReason).toBe('price too low vs historical avg');
+    expect(result.suspicious).toBe(false);
   });
 
   it('does not flag price at exactly 30% of avg', async () => {
@@ -83,17 +82,16 @@ describe('OutlierDetector', () => {
     expect(result.suspicious).toBe(false);
   });
 
-  it('historical check takes priority over cross-source', async () => {
-    // Both conditions met, but historical fires first
+  it('with historical check disabled, cross-source still works', async () => {
     const prisma = makePrisma([
       { pricePerPerson: 400, source: 'amadeus' },
       { pricePerPerson: 600, source: 'travelpayouts' },
     ]);
     detector = new OutlierDetector(prisma);
-    // avg48h = 500, price = 50 → both historical and cross-source would flag
+    // avg48h = 500, price = 50 → historical disabled, cross-source fires
     const result = await detector.check('search-1', 50, 'kiwi', 500);
     expect(result.suspicious).toBe(true);
-    expect(result.suspicionReason).toBe('price too low vs historical avg');
+    expect(result.suspicionReason).toBe('price too low vs other sources');
   });
 
   it('does not flag when avg48h is 0', async () => {
