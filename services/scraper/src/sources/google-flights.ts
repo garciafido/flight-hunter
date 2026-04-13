@@ -49,17 +49,11 @@ export class GoogleFlightsSource {
     // shows higher-priced "best value" results. We want strictly cheapest.
     // The tab text is "Cheapest from $XXX" so we match partial text.
     try {
-      // Try multiple selectors — Google's DOM varies
       const selectors = [
         'button:has-text("Cheapest")',
         '[role="tab"]:has-text("Cheapest")',
         'text=Cheapest',
       ];
-      // Capture a price BEFORE clicking to detect when results update
-      const priceBefore = await page.evaluate(() => {
-        const m = document.body.innerText.match(/\$(\d{1,3}(?:,\d{3})*)/);
-        return m ? m[0] : null;
-      }).catch(() => null);
 
       let clicked = false;
       for (const sel of selectors) {
@@ -71,17 +65,22 @@ export class GoogleFlightsSource {
         }
       }
       if (clicked) {
-        // Wait for results to refresh — poll until a price changes or timeout
-        await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-        // Extra wait: Google animates the tab switch and re-renders results
-        for (let attempt = 0; attempt < 5; attempt++) {
-          await page.waitForTimeout(1500);
-          const priceAfter = await page.evaluate(() => {
-            const m = document.body.innerText.match(/\$(\d{1,3}(?:,\d{3})*)/);
-            return m ? m[0] : null;
-          }).catch(() => null);
-          if (priceAfter && priceAfter !== priceBefore) break;
+        // Google shows "Finding the cheapest booking options..." with a progress
+        // bar while loading Cheapest results. We MUST wait for this to disappear
+        // before scraping — otherwise we get Best tab prices.
+        // Wait for the loading text to appear then disappear (up to 20s).
+        try {
+          const loadingLocator = page.locator('text=Finding the cheapest');
+          // First wait briefly for it to appear (it may already be visible)
+          await loadingLocator.waitFor({ state: 'visible', timeout: 3000 }).catch(() => {});
+          // Then wait for it to disappear — this means results are loaded
+          await loadingLocator.waitFor({ state: 'hidden', timeout: 20000 });
+        } catch {
+          // Loading text never appeared or didn't disappear — fallback to timed wait
+          await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
         }
+        // Extra buffer for DOM to settle after loading completes
+        await page.waitForTimeout(2000);
       }
     } catch {
       // Tab not found or click failed — continue with whatever tab is active

@@ -41,14 +41,19 @@ const makeConsistencyConfig = (overrides: Partial<SearchConfig> = {}): SearchCon
   ...overrides,
 });
 
-function makeMockPage(evaluateResult: unknown = []) {
+function makeMockPage(evaluateResult: unknown = [], urlOverride?: string) {
+  let lastGotoUrl = urlOverride ?? 'https://www.google.com/travel/flights/search?tfs=mock';
+  const mockLocator = {
+    isVisible: vi.fn().mockResolvedValue(false),
+    click: vi.fn().mockResolvedValue(undefined),
+    first: vi.fn().mockReturnThis(),
+    waitFor: vi.fn().mockResolvedValue(undefined),
+  };
   return {
-    goto: vi.fn().mockResolvedValue(undefined),
+    goto: vi.fn().mockImplementation((u: string) => { lastGotoUrl = u; return Promise.resolve(); }),
     evaluate: vi.fn().mockResolvedValue(evaluateResult),
-    locator: vi.fn().mockReturnValue({
-      isVisible: vi.fn().mockResolvedValue(false),
-      click: vi.fn().mockResolvedValue(undefined),
-    }),
+    url: vi.fn().mockImplementation(() => lastGotoUrl),
+    locator: vi.fn().mockReturnValue(mockLocator),
     getByText: vi.fn().mockReturnValue({
       isVisible: vi.fn().mockResolvedValue(false),
       click: vi.fn().mockResolvedValue(undefined),

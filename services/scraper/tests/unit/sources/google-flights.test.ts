@@ -90,6 +90,8 @@ describe('GoogleFlightsSource', () => {
         locator: vi.fn().mockReturnValue({
           isVisible: vi.fn().mockResolvedValue(false),
           click: vi.fn().mockResolvedValue(undefined),
+          first: vi.fn().mockReturnThis(),
+          waitFor: vi.fn().mockResolvedValue(undefined),
         }),
         getByText: vi.fn().mockReturnValue({
           isVisible: vi.fn().mockResolvedValue(false),
