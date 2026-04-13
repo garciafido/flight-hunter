@@ -42,10 +42,11 @@ describe('Scheduler', () => {
       },
       flightResult: {
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        count: vi.fn().mockResolvedValue(100),
       },
     };
     jobProcessor = {
-      execute: vi.fn().mockResolvedValue(undefined),
+      execute: vi.fn().mockResolvedValue(10),
     };
   });
 

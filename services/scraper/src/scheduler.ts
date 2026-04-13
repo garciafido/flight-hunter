@@ -36,27 +36,42 @@ export class Scheduler {
   }
 
   /**
-   * Wait for the analyzer to finish processing all raw-result jobs before
-   * triggering combo evaluation. Polls the raw-results queue every 3s.
-   * After the queue drains, waits an extra 3s for DB commits to flush.
+   * Wait for the analyzer to finish processing all raw-result jobs.
+   * Two-phase check:
+   *   1. Poll the BullMQ queue until waiting + active == 0
+   *   2. Poll the DB until it has at least `expectedCount` results for this search
+   * This prevents the race condition where the queue drains but DB writes
+   * haven't committed yet.
    */
-  private async waitForRawResultsDrain(): Promise<void> {
+  async waitForRawResultsDrain(searchId: string, expectedCount: number): Promise<void> {
     const MAX_WAIT_MS = 5 * 60_000;
     const POLL_INTERVAL_MS = 3_000;
-    const DB_FLUSH_BUFFER_MS = 1_000;
-
     const start = Date.now();
+
+    // Phase 1: wait for BullMQ queue to drain
     while (Date.now() - start < MAX_WAIT_MS) {
       const counts = await this.rawResultsQueue.getJobCounts('waiting', 'active');
       const pending = (counts.waiting ?? 0) + (counts.active ?? 0);
-      if (pending === 0) {
-        await new Promise((r) => setTimeout(r, DB_FLUSH_BUFFER_MS));
-        return;
-      }
-      console.log(`Scheduler: waiting for raw-results to drain (${pending} pending)`);
+      if (pending === 0) break;
+      console.log(`Scheduler: waiting for raw-results queue to drain (${pending} pending)`);
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     }
-    console.warn('Scheduler: raw-results drain timed out after 5 min — proceeding anyway');
+
+    // Phase 2: verify DB has the expected results
+    if (expectedCount > 0) {
+      while (Date.now() - start < MAX_WAIT_MS) {
+        const dbCount = await this.prisma.flightResult.count({
+          where: { searchId },
+        });
+        if (dbCount >= expectedCount) {
+          console.log(`Scheduler: DB has ${dbCount} results (expected ${expectedCount}) — ready`);
+          return;
+        }
+        console.log(`Scheduler: waiting for DB persistence (${dbCount}/${expectedCount})`);
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      }
+      console.warn('Scheduler: DB persistence timed out — proceeding anyway');
+    }
   }
 
   async tick(): Promise<void> {
@@ -86,14 +101,14 @@ export class Scheduler {
     for (const search of searches) {
       try {
         console.log(`Scheduler: executing search "${search.name}" (${search.id})`);
-        await this.jobProcessor.execute(search as unknown as SearchConfig);
+        const enqueued = await this.jobProcessor.execute(search as unknown as SearchConfig);
+        console.log(`Scheduler: search "${search.name}" enqueued ${enqueued} result(s)`);
 
         // Wait for the analyzer to persist all raw-results to the DB
-        // before triggering combo evaluation. This prevents the race
-        // condition where ComboEvaluator queries the DB and finds 0 rows.
-        await this.waitForRawResultsDrain();
+        // before triggering combo evaluation.
+        await this.waitForRawResultsDrain(search.id, enqueued);
 
-        console.log(`Scheduler: search "${search.name}" completed — enqueueing combo evaluation`);
+        console.log(`Scheduler: enqueueing combo evaluation for "${search.name}"`);
         await this.evaluateCombosQueue.add(
           QUEUE_NAMES.EVALUATE_COMBOS,
           { searchId: search.id },

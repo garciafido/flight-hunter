@@ -20,7 +20,8 @@ export class SearchJobProcessor {
     this.resilience = resilience ?? new PassthroughResilienceLayer();
   }
 
-  async execute(config: SearchConfig): Promise<void> {
+  /** Returns the number of raw-result jobs enqueued. */
+  async execute(config: SearchConfig): Promise<number> {
     // Flexible destination: iterate over each expanded candidate substituted into the last waypoint
     if (config.destinationMode === 'flexible' && config.destinationCandidates?.length) {
       return this.executeFlexibleDestination(config);
@@ -34,10 +35,10 @@ export class SearchJobProcessor {
     return this.executeWaypoints(config);
   }
 
-  private async executeWaypoints(config: SearchConfig): Promise<void> {
+  private async executeWaypoints(config: SearchConfig): Promise<number> {
     if (!config.waypoints || config.waypoints.length === 0) {
       console.warn(`Search ${config.id} has no waypoints; skipping`);
-      return;
+      return 0;
     }
 
     const sequences = enumerateLegSequences(config.origin, config.waypoints);
@@ -100,6 +101,7 @@ export class SearchJobProcessor {
     console.log(`  Waypoint dispatcher: ${sequences.length} sequence(s), ${uniquePairs.length} unique pair(s): ${uniquePairs.map(p => `${p.origin}→${p.destination}`).join(', ')}`);
 
     const regions = config.proxyRegions.length > 0 ? config.proxyRegions : ['default'];
+    let enqueued = 0;
 
     for (const region of regions) {
       const proxyUrl = await this.vpnRouter.getProxyUrl(region);
@@ -128,20 +130,23 @@ export class SearchJobProcessor {
               attempts: 3,
               backoff: { type: 'exponential', delay: 1000 },
             });
+            enqueued++;
           }
         }
       }
     }
+    return enqueued;
   }
 
-  private async executeFlexibleDestination(config: SearchConfig): Promise<void> {
+  private async executeFlexibleDestination(config: SearchConfig): Promise<number> {
     if (!config.waypoints || config.waypoints.length === 0) {
       console.warn(`Search ${config.id} (flexible) has no waypoints; skipping`);
-      return;
+      return 0;
     }
 
     const candidates = expandDestinationCandidates(config.destinationCandidates!);
     const lastWaypointIndex = config.waypoints.length - 1;
+    let total = 0;
 
     for (const destination of candidates) {
       const newWaypoints = [...config.waypoints];
@@ -157,11 +162,12 @@ export class SearchJobProcessor {
         destinationMode: 'single',
         destinationCandidates: undefined,
       };
-      await this.executeWaypoints(syntheticConfig);
+      total += await this.executeWaypoints(syntheticConfig);
     }
+    return total;
   }
 
-  private async executeWindowMode(config: SearchConfig): Promise<void> {
+  private async executeWindowMode(config: SearchConfig): Promise<number> {
     const rangeStart = new Date(config.departureFrom);
     const rangeEnd = new Date(config.departureTo);
     // Note: windowDuration and windowFlexibility are present on the type for
@@ -169,6 +175,7 @@ export class SearchJobProcessor {
     // waypoint model, so they are intentionally ignored by the dispatcher here.
     const MAX_WINDOWS = 30;
     let count = 0;
+    let total = 0;
     const cursor = new Date(rangeStart);
     while (cursor <= rangeEnd && count < MAX_WINDOWS) {
       const synth: SearchConfig = {
@@ -177,9 +184,10 @@ export class SearchJobProcessor {
         departureTo: new Date(cursor),
         windowMode: false,
       };
-      await this.executeWaypoints(synth);
+      total += await this.executeWaypoints(synth);
       count++;
       cursor.setDate(cursor.getDate() + 1);
     }
+    return total;
   }
 }
