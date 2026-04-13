@@ -19,6 +19,13 @@ export class Scheduler {
   async cleanStaleResults(): Promise<number> {
     const maxAgeMs = getRuntimeConfig().resultMaxAgeHours * 60 * 60 * 1000;
     const cutoff = new Date(Date.now() - maxAgeMs);
+    // Delete dependents first (FK constraints)
+    await this.prisma.alert.deleteMany({
+      where: { flightResult: { scrapedAt: { lt: cutoff } } },
+    });
+    await (this.prisma as any).flightCombo.deleteMany({
+      where: { createdAt: { lt: cutoff } },
+    });
     const deleted = await this.prisma.flightResult.deleteMany({
       where: { scrapedAt: { lt: cutoff } },
     });
