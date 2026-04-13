@@ -2,7 +2,7 @@
   "name": "flight-hunter",
   "private": true,
   "scripts": {
-    "clean": "rm -rf services/dashboard/.next node_modules/.cache .turbo services/*/.turbo && pnpm --filter @flight-hunter/shared build",
+    "clean": "rm -rf services/dashboard/.next node_modules/.cache .turbo services/*/.turbo && (echo 'FLUSHDB' | nc -w2 localhost 6379 || true) && pnpm --filter @flight-hunter/shared build",
     "kill": "pkill -9 -f 'flight-hunter.*chrome-headless-shell' 2>/dev/null; pkill -f 'flight-hunter.*tsx.*watch' 2>/dev/null; pkill -f 'flight-hunter.*tsc.*watch' 2>/dev/null; echo 'Killed flight-hunter zombie processes'",
     "dev": "pnpm kill; pnpm clean && turbo dev",
     "build": "turbo build",

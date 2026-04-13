@@ -84,7 +84,28 @@ export async function DELETE(request: Request) {
     }
 
     const result = await prisma.alert.deleteMany({ where });
-    return NextResponse.json({ deleted: result.count });
+
+    // When deleting ALL alerts, also clean flight_results, combos, price_history
+    // and flush Redis queues to prevent stale data from resurfacing.
+    if (all) {
+      await prisma.flightCombo.deleteMany({ where: searchId ? { searchId } : {} });
+      await prisma.flightResult.deleteMany({ where: searchId ? { searchId } : {} });
+      await prisma.priceHistory.deleteMany({ where: searchId ? { searchId } : {} });
+      // Flush Redis BullMQ queues (stale jobs cause price/date contamination)
+      try {
+        const { Redis } = await import('ioredis');
+        const redis = new Redis({
+          host: process.env.REDIS_HOST ?? 'localhost',
+          port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
+        });
+        await redis.flushdb();
+        await redis.quit();
+      } catch {
+        // Redis flush is best-effort — don't fail the request
+      }
+    }
+
+    return NextResponse.json({ deleted: result.count, cleanedAll: !!all });
   } catch (err) {
     console.error('DELETE /api/alerts error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
