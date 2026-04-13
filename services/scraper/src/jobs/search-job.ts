@@ -1,7 +1,6 @@
 import type { Queue } from 'bullmq';
 import type { SearchConfig, FlightResult } from '@flight-hunter/shared';
 import { QUEUE_NAMES, expandDestinationCandidates, enumerateLegSequences } from '@flight-hunter/shared';
-import type { FlightSource } from '../sources/base-source.js';
 import type { VpnRouter } from '../proxy/vpn-router.js';
 import type { GoogleFlightsSource } from '../sources/google-flights.js';
 import type { ResilienceLayer } from '../resilience/resilience-layer.js';
@@ -13,7 +12,7 @@ export class SearchJobProcessor {
   private readonly resilience: ResilienceLayer;
 
   constructor(
-    private readonly sources: FlightSource[],
+    private readonly sources: GoogleFlightsSource[],
     private readonly vpnRouter: VpnRouter,
     private readonly rawResultsQueue: Queue,
     resilience?: ResilienceLayer,
@@ -101,14 +100,10 @@ export class SearchJobProcessor {
     console.log(`  Waypoint dispatcher: ${sequences.length} sequence(s), ${uniquePairs.length} unique pair(s): ${uniquePairs.map(p => `${p.origin}→${p.destination}`).join(', ')}`);
 
     const regions = config.proxyRegions.length > 0 ? config.proxyRegions : ['default'];
-    const oneWaySources = this.sources.filter(
-      (s): s is GoogleFlightsSource =>
-        typeof (s as any).searchOneWay === 'function',
-    );
 
     for (const region of regions) {
       const proxyUrl = await this.vpnRouter.getProxyUrl(region);
-      for (const source of oneWaySources) {
+      for (const source of this.sources) {
         for (const pair of uniquePairs) {
           const leg: SearchLegInput & { passengers?: number } = {
             origin: pair.origin,

@@ -22,7 +22,7 @@ export interface StopoverInfo {
   leg?: StopoverResultLeg;
 }
 
-export type FlightSource = 'kiwi' | 'skyscanner' | 'google-flights' | 'amadeus' | 'travelpayouts' | 'duffel';
+export type FlightSource = 'google-flights';
 export type ProxyRegion = 'CL' | 'AR';
 
 export interface FlightResult {

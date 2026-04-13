@@ -1,7 +1,5 @@
 import type { FlightResult, SearchConfig, ProxyRegion } from '@flight-hunter/shared';
 import { getRuntimeConfig } from '@flight-hunter/shared';
-import type { FlightSource } from './base-source.js';
-
 type LegInput = { origin: string; destination: string; departureFrom: Date; departureTo: Date };
 
 function formatDate(d: Date): string {
@@ -34,7 +32,7 @@ function computeDurationMinutes(
   return Math.round(diff / 60000);
 }
 
-export class GoogleFlightsSource implements FlightSource {
+export class GoogleFlightsSource {
   readonly name = 'google-flights';
 
   private async scrapePage(

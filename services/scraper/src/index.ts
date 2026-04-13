@@ -3,12 +3,7 @@ import { Queue } from 'bullmq';
 import { PrismaClient } from '@flight-hunter/shared/db';
 import { Redis } from 'ioredis';
 import { QUEUE_NAMES, startRuntimeConfigPoller } from '@flight-hunter/shared';
-import { KiwiSource } from './sources/kiwi.js';
-import { SkyscannerSource } from './sources/skyscanner.js';
 import { GoogleFlightsSource } from './sources/google-flights.js';
-import { AmadeusSource } from './sources/amadeus.js';
-import { TravelpayoutsSource } from './sources/travelpayouts.js';
-import { DuffelSource } from './sources/duffel.js';
 import { VpnRouter } from './proxy/vpn-router.js';
 import { SearchJobProcessor } from './jobs/search-job.js';
 import { Scheduler } from './scheduler.js';
@@ -33,15 +28,7 @@ startRuntimeConfigPoller(prisma, {
 
 const rawResultsQueue = new Queue(QUEUE_NAMES.RAW_RESULTS, { connection: redis });
 
-const kiwiSource = new KiwiSource(process.env.KIWI_API_KEY ?? '');
-const skyscannerSource = new SkyscannerSource(process.env.RAPIDAPI_KEY ?? '');
 const googleFlightsSource = new GoogleFlightsSource();
-const amadeusSource = new AmadeusSource(
-  process.env.AMADEUS_API_KEY ?? '',
-  process.env.AMADEUS_API_SECRET ?? '',
-);
-const travelpayoutsSource = new TravelpayoutsSource(process.env.TRAVELPAYOUTS_TOKEN ?? '');
-const duffelSource = new DuffelSource(process.env.DUFFEL_API_TOKEN ?? '');
 
 const vpnRouter = new VpnRouter(prisma);
 
@@ -52,7 +39,7 @@ const resilienceLayer = new DefaultResilienceLayer(
 );
 
 const jobProcessor = new SearchJobProcessor(
-  [amadeusSource, kiwiSource, skyscannerSource, googleFlightsSource, travelpayoutsSource, duffelSource],
+  [googleFlightsSource],
   vpnRouter,
   rawResultsQueue,
   resilienceLayer,

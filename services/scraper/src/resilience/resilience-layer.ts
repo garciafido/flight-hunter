@@ -8,8 +8,6 @@ import { SourceMetricsService } from './source-metrics.js';
  */
 const SOURCE_RATE_LIMITS: Record<string, number> = {
   'google-flights': 10,
-  'travelpayouts': 30,
-  'duffel': 60,
 };
 const DEFAULT_RATE_LIMIT = 10;
 

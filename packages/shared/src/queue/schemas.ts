@@ -24,7 +24,7 @@ const StopoverInfoSchema = z.object({
 
 export const RawResultJobSchema = z.object({
   searchId: z.string(),
-  source: z.enum(['kiwi', 'skyscanner', 'google-flights', 'amadeus', 'travelpayouts', 'duffel']),
+  source: z.literal('google-flights'),
   outbound: FlightLegSchema,
   inbound: FlightLegSchema,
   stopover: StopoverInfoSchema.optional(),

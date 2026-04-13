@@ -107,9 +107,9 @@ describe('DefaultResilienceLayer', () => {
 
   it('uses per-source rate limit (creates separate limiter per source name)', async () => {
     const layer = new DefaultResilienceLayer(prisma as never);
-    // Two different sources should each get their own limiter
-    await layer.callSource('travelpayouts', false, async () => [1]);
-    await layer.callSource('duffel', false, async () => [2]);
+    // Two different source names should each get their own limiter
+    await layer.callSource('google-flights', false, async () => [1]);
+    await layer.callSource('unknown-source', false, async () => [2]);
 
     // Both should have executed
     expect(prisma.sourceMetric.create).toHaveBeenCalledTimes(2);

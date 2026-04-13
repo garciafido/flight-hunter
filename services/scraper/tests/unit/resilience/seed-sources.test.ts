@@ -17,67 +17,37 @@ describe('seedSources', () => {
   beforeEach(() => {
     prisma = makeMockPrisma();
     process.env = { ...originalEnv };
-    delete process.env.TRAVELPAYOUTS_TOKEN;
-    delete process.env.DUFFEL_API_TOKEN;
-    delete process.env.AMADEUS_API_KEY;
-    delete process.env.AMADEUS_API_SECRET;
-    delete process.env.KIWI_API_KEY;
-    delete process.env.SKYSCANNER_API_KEY;
   });
 
   afterEach(() => {
     process.env = originalEnv;
   });
 
-  it('seeds 6 sources when table is empty', async () => {
+  it('seeds 1 source when table is empty', async () => {
     prisma.source.count.mockResolvedValue(0);
 
     await seedSources(prisma as never);
 
-    expect(prisma.source.upsert).toHaveBeenCalledTimes(6);
+    expect(prisma.source.upsert).toHaveBeenCalledTimes(1);
     const names = prisma.source.upsert.mock.calls.map((c) => c[0].where.name);
-    expect(names).toEqual(
-      expect.arrayContaining(['google-flights', 'travelpayouts', 'duffel', 'amadeus', 'kiwi', 'skyscanner']),
-    );
+    expect(names).toEqual(['google-flights']);
   });
 
   it('skips seeding when sources already exist', async () => {
-    prisma.source.count.mockResolvedValue(3);
+    prisma.source.count.mockResolvedValue(1);
 
     await seedSources(prisma as never);
 
     expect(prisma.source.upsert).not.toHaveBeenCalled();
   });
 
-  it('marks travelpayouts as having API key when token env is set', async () => {
+  it('seeds google-flights with hasApiKey=false', async () => {
     prisma.source.count.mockResolvedValue(0);
-    process.env.TRAVELPAYOUTS_TOKEN = 'tp-token';
 
     await seedSources(prisma as never);
 
-    const tpCall = prisma.source.upsert.mock.calls.find((c) => c[0].where.name === 'travelpayouts');
-    expect(tpCall![0].create.hasApiKey).toBe(true);
-  });
-
-  it('marks amadeus as having API key only when both KEY and SECRET are set', async () => {
-    prisma.source.count.mockResolvedValue(0);
-    process.env.AMADEUS_API_KEY = 'k';
-    // No secret
-
-    await seedSources(prisma as never);
-
-    const amCall = prisma.source.upsert.mock.calls.find((c) => c[0].where.name === 'amadeus');
-    expect(amCall![0].create.hasApiKey).toBe(false);
-
-    // Now with both
-    prisma.source.upsert.mockClear();
-    prisma.source.count.mockResolvedValue(0);
-    process.env.AMADEUS_API_SECRET = 's';
-
-    await seedSources(prisma as never);
-
-    const amCall2 = prisma.source.upsert.mock.calls.find((c) => c[0].where.name === 'amadeus');
-    expect(amCall2![0].create.hasApiKey).toBe(true);
+    const gfCall = prisma.source.upsert.mock.calls.find((c) => c[0].where.name === 'google-flights');
+    expect(gfCall![0].create.hasApiKey).toBe(false);
   });
 
   it('catches and logs errors without throwing', async () => {

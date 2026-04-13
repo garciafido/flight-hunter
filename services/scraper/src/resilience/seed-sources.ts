@@ -19,26 +19,6 @@ export async function seedSources(prisma: PrismaClient): Promise<void> {
         name: 'google-flights',
         hasApiKey: false,
       },
-      {
-        name: 'travelpayouts',
-        hasApiKey: !!process.env.TRAVELPAYOUTS_TOKEN,
-      },
-      {
-        name: 'duffel',
-        hasApiKey: !!process.env.DUFFEL_API_TOKEN,
-      },
-      {
-        name: 'amadeus',
-        hasApiKey: !!(process.env.AMADEUS_API_KEY && process.env.AMADEUS_API_SECRET),
-      },
-      {
-        name: 'kiwi',
-        hasApiKey: !!process.env.KIWI_API_KEY,
-      },
-      {
-        name: 'skyscanner',
-        hasApiKey: !!process.env.SKYSCANNER_API_KEY,
-      },
     ];
 
     for (const src of sources) {
