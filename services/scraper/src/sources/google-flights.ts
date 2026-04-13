@@ -290,13 +290,12 @@ export class GoogleFlightsSource {
 
       for (const dep of dates) {
         const legPax = leg.passengers ?? config.passengers;
-        // T5: Two separate URLs with clear responsibilities:
-        // - scrapeUrl: always 1 adult → Google shows per-person price, guaranteed
-        // - bookingUrl: real passenger count → user clicks and sees their search
-        const scrapeUrl = this.buildScrapeUrl(leg.origin, leg.destination, dep);
-        const bookingUrl = this.buildBookingUrl(leg.origin, leg.destination, dep, legPax);
+        // Scrape with ACTUAL passenger count so the results match what the
+        // user sees when they click the booking link. Google always shows
+        // TOTAL price for N adults → we divide by N to get per-person.
+        const url = this.buildBookingUrl(leg.origin, leg.destination, dep, legPax);
         try {
-          const flights = await this.scrapePage(page, scrapeUrl);
+          const flights = await this.scrapePage(page, url);
           console.log(`      ${formatDate(dep)}: ${flights.length} flight(s)`);
 
           for (const f of flights) {
@@ -328,11 +327,10 @@ export class GoogleFlightsSource {
               },
               totalPrice: f.price,
               currency: 'USD',
-              // Scraped with 1 adult → price IS per-person. Guaranteed.
-              pricePer: 'person' as const,
-              passengers: 1,
-              // Booking URL has the real passenger count for the user's click-through
-              bookingUrl,
+              // Google shows TOTAL for N adults. Divide by N for per-person.
+              pricePer: 'total' as const,
+              passengers: legPax,
+              bookingUrl: url,
               carryOnIncluded: true,
               scrapedAt: new Date(),
               proxyRegion,

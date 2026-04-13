@@ -109,29 +109,26 @@ describe('Price Consistency E2E: scraper → analyzer → alert', () => {
     expect(results.length).toBeGreaterThan(0);
     const result = results[0];
 
-    // Price as scraped (1 adult)
+    // Price as scraped (total for N adults — config has passengers=2)
     expect(result.totalPrice).toBe(250);
-    // Always pricePer='person' because scrape uses 1 adult
-    expect(result.pricePer).toBe('person');
-    // passengers=1 on the scraped result
-    expect(result.passengers).toBe(1);
+    // Google shows total for N adults
+    expect(result.pricePer).toBe('total');
+    // passengers matches the search config
+    expect(result.passengers).toBe(2);
     // durationMinutes comes from scrapedDuration
     expect(result.outbound.durationMinutes).toBe(300);
   });
 
-  it('analyzer normalization: pricePerPerson=250 (not 125 or 500) when pricePer=person, passengers=1', () => {
-    // Simulate what the analyzer does with the scraped FlightResult
+  it('analyzer normalization: pricePerPerson=125 when pricePer=total, passengers=2', () => {
+    // Simulate what the analyzer does: Google shows $250 total for 2 adults
     const totalPrice = 250;
-    const pricePer = 'person' as const;
-    const passengers = 1;
+    const pricePer = 'total' as const;
+    const passengers = 2;
 
     const pricePerPerson = normalizePricePerPerson(totalPrice, pricePer, passengers);
 
-    expect(pricePerPerson).toBe(250);
-    // Guard against half-price bug (dividing by 2 real passengers)
-    expect(pricePerPerson).not.toBe(125);
-    // Guard against double-price bug (multiplying by 2 real passengers)
-    expect(pricePerPerson).not.toBe(500);
+    // $250 total / 2 pax = $125 per person
+    expect(pricePerPerson).toBe(125);
   });
 
   it('booking URL contains +for+2+adults (real passenger count from config)', async () => {
