@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { SearchConfig } from '@flight-hunter/shared';
+import { getRuntimeConfig } from '@flight-hunter/shared';
 import type { SearchJobProcessor } from './jobs/search-job.js';
 
 export class Scheduler {
@@ -9,6 +10,20 @@ export class Scheduler {
     private readonly prisma: PrismaClient,
     private readonly jobProcessor: SearchJobProcessor,
   ) {}
+
+  /**
+   * Clean stale flight results that are older than resultMaxAgeHours.
+   * Prevents contamination from old ticks with stale prices/dates.
+   * Runs before the first tick and can be called on-demand.
+   */
+  async cleanStaleResults(): Promise<number> {
+    const maxAgeMs = getRuntimeConfig().resultMaxAgeHours * 60 * 60 * 1000;
+    const cutoff = new Date(Date.now() - maxAgeMs);
+    const deleted = await this.prisma.flightResult.deleteMany({
+      where: { scrapedAt: { lt: cutoff } },
+    });
+    return deleted.count;
+  }
 
   async tick(): Promise<void> {
     const now = new Date();
@@ -45,19 +60,19 @@ export class Scheduler {
     }
   }
 
-  start(intervalMs: number): void {
-    // Wait 15s before the first tick so that tsc --watch has time to
-    // recompile the shared package (turbo starts all services in parallel
-    // and the scraper can import stale dist/ on the very first tick).
-    const startupDelayMs = 15_000;
-    console.log(`Scheduler: waiting ${startupDelayMs / 1000}s for shared to compile, then polling every ${intervalMs / 1000}s...`);
-    setTimeout(() => {
-      console.log('Scheduler: running first tick now...');
+  async start(intervalMs: number): Promise<void> {
+    // Clean stale results BEFORE the first tick — prevents old data with
+    // wrong prices/dates from contaminating combos on restart.
+    const deleted = await this.cleanStaleResults();
+    if (deleted > 0) {
+      console.log(`Scheduler: cleaned ${deleted} stale flight result(s)`);
+    }
+
+    console.log(`Scheduler: polling every ${intervalMs / 1000}s, running first tick now...`);
+    await this.tick();
+    this.intervalId = setInterval(() => {
       void this.tick();
-      this.intervalId = setInterval(() => {
-        void this.tick();
-      }, intervalMs);
-    }, startupDelayMs);
+    }, intervalMs);
   }
 
   stop(): void {

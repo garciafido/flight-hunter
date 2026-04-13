@@ -27,6 +27,9 @@ export interface RuntimeConfig {
   scraperMaxDatesPerPair: number;
   // Permutation engine cap on number of waypoints (factorial blowup safety).
   maxWaypoints: number;
+  // Max age (hours) of flight results used for combo building.
+  // Results older than this are ignored (prevents stale data contamination).
+  resultMaxAgeHours: number;
 }
 
 export const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
@@ -36,6 +39,7 @@ export const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   notifierCooldownMs: 2 * 60 * 60 * 1000, // 2h
   scraperMaxDatesPerPair: 8,
   maxWaypoints: 6,
+  resultMaxAgeHours: 24,
 };
 
 let CURRENT: RuntimeConfig = freeze(DEFAULT_RUNTIME_CONFIG);
@@ -47,6 +51,7 @@ function freeze(config: RuntimeConfig): RuntimeConfig {
     notifierDedupTtlMs: config.notifierDedupTtlMs,
     notifierCooldownMs: config.notifierCooldownMs,
     scraperMaxDatesPerPair: config.scraperMaxDatesPerPair,
+    resultMaxAgeHours: config.resultMaxAgeHours,
     maxWaypoints: config.maxWaypoints,
   };
 }
@@ -66,6 +71,7 @@ export function applyRuntimeConfig(override: Partial<RuntimeConfig> | null | und
     notifierDedupTtlMs: override?.notifierDedupTtlMs ?? DEFAULT_RUNTIME_CONFIG.notifierDedupTtlMs,
     notifierCooldownMs: override?.notifierCooldownMs ?? DEFAULT_RUNTIME_CONFIG.notifierCooldownMs,
     scraperMaxDatesPerPair: override?.scraperMaxDatesPerPair ?? DEFAULT_RUNTIME_CONFIG.scraperMaxDatesPerPair,
+    resultMaxAgeHours: override?.resultMaxAgeHours ?? DEFAULT_RUNTIME_CONFIG.resultMaxAgeHours,
     maxWaypoints: override?.maxWaypoints ?? DEFAULT_RUNTIME_CONFIG.maxWaypoints,
   };
   CURRENT = freeze(merged);

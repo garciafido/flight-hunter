@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { RawResultJob, SearchConfig, FlightResult } from '@flight-hunter/shared';
-import { normalizePricePerPerson, enumerateLegSequences, type Waypoint, type LegSequence } from '@flight-hunter/shared';
+import { normalizePricePerPerson, enumerateLegSequences, getRuntimeConfig, type Waypoint, type LegSequence } from '@flight-hunter/shared';
 import { ScoringEngine } from './scoring/engine.js';
 import { computePriceScore } from './scoring/price-score.js';
 import { computeScheduleScore } from './scoring/schedule-score.js';
@@ -168,11 +168,17 @@ export class AnalyzerWorker {
     topN: number,
   ): Promise<void> {
     // Fetch flights for each leg pair — filter in memory by airport pair.
-    // Fetching all flights per search and filtering is fine for personal-use scale.
+    // Only use RECENT results (configurable via resultMaxAgeHours) to prevent
+    // stale data from old ticks contaminating combos with outdated prices.
+    const maxAgeMs = getRuntimeConfig().resultMaxAgeHours * 60 * 60 * 1000;
+    const recentCutoff = new Date(Date.now() - maxAgeMs);
     const legResultArrays: (FlightResult & { id: string })[][] = [];
     for (const legPair of sequence.legs) {
       const rows = await this.deps.prisma.flightResult.findMany({
-        where: { searchId },
+        where: {
+          searchId,
+          scrapedAt: { gte: recentCutoff },
+        },
         orderBy: { pricePerPerson: 'asc' },
       });
       const matching = rows

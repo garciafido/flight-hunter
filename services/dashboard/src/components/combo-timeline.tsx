@@ -150,7 +150,7 @@ export function ComboTimeline({ legs }: Props) {
           ✈ {airline ?? 'Vuelo'}
           {duration && <> · {duration}</>}
           {leg.price != null && (
-            <> · {leg.currency ?? ''} {leg.price}</>
+            <> · {leg.currency ?? ''} {leg.price}/persona</>
           )}
           {leg.bookingUrl && (
             <>

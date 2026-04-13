@@ -49,12 +49,12 @@ const scheduler = new Scheduler(prisma, jobProcessor);
 
 const intervalMs = parseInt(process.env.SCAN_INTERVAL_MS ?? '300000', 10);
 
-// Seed sources on boot (no-op if already seeded)
-seedSources(prisma).then(() => {
-  scheduler.start(intervalMs);
+// Seed sources on boot (no-op if already seeded), then start scheduler
+seedSources(prisma).then(async () => {
+  await scheduler.start(intervalMs);
   console.log('Scraper service started');
-}).catch((err) => {
+}).catch(async (err) => {
   console.error('Seed failed, starting anyway:', err);
-  scheduler.start(intervalMs);
+  await scheduler.start(intervalMs);
   console.log('Scraper service started');
 });
