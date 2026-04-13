@@ -50,6 +50,11 @@ export class ComboEvaluator {
 
     console.log(`ComboEvaluator: ${allRows.length} recent results for search ${searchId}, ${sequences.length} sequence(s)`);
 
+    if (allRows.length === 0) {
+      console.warn(`ComboEvaluator: 0 results for search ${searchId} with ${waypoints.length} waypoint(s) — skipping combo evaluation`);
+      return;
+    }
+
     for (const sequence of sequences) {
       try {
         await this.evaluateOneSequence(searchId, searchConfig, search, sequence, waypoints, TOP_N, allRows);

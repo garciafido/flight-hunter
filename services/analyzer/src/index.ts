@@ -56,7 +56,7 @@ const worker = new Worker<RawResultJob>(
     const data = RawResultJobSchema.parse(job.data);
     await analyzerWorker.process(data);
   },
-  { connection: redis },
+  { connection: redis, concurrency: 5 },
 );
 
 worker.on('failed', (job, err) => {
@@ -67,8 +67,8 @@ worker.on('completed', (job) => {
   logger.info({ jobId: job.id }, 'Analyzer raw-result job completed');
 });
 
-// Combo evaluation worker — triggered once per search after the scraper
-// finishes a full tick, instead of on every individual flight result.
+// Combo evaluation worker — triggered once per search after the scraper's
+// scheduler confirms all raw-results have been processed and persisted.
 const comboEvaluator = new ComboEvaluator({ prisma, dealDetector, publisher });
 
 const comboWorker = new Worker<EvaluateCombosJob>(

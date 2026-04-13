@@ -272,12 +272,8 @@ export class GoogleFlightsSource {
     return d.toISOString();
   }
 
-  /** URL for SCRAPING — always 1 adult for consistent per-person pricing. */
-  buildScrapeUrl(origin: string, destination: string, depDate: Date): string {
-    return `https://www.google.com/travel/flights?q=One+way+flight+from+${origin}+to+${destination}+on+${formatDate(depDate)}&curr=USD&hl=en`;
-  }
-
-  /** URL shown to the USER in alerts — includes the real passenger count. */
+  /** Build Google Flights URL with the given passenger count.
+   *  Used for both scraping (with real pax count) and booking links in alerts. */
   buildBookingUrl(origin: string, destination: string, depDate: Date, passengers: number): string {
     const paxStr = passengers > 1 ? `+for+${passengers}+adults` : '';
     return `https://www.google.com/travel/flights?q=One+way+flight+from+${origin}+to+${destination}+on+${formatDate(depDate)}${paxStr}&curr=USD&hl=en`;
@@ -357,13 +353,15 @@ export class GoogleFlightsSource {
                 durationMinutes,
                 stops: stopCount,
               },
+              // One-way flight — inbound is a placeholder (combo pipeline
+              // only uses outbound data). Set sensible defaults.
               inbound: {
-                departure: { airport: leg.destination, time: arrIso },
-                arrival: { airport: leg.origin, time: arrIso },
+                departure: { airport: leg.destination, time: depIso },
+                arrival: { airport: leg.destination, time: depIso },
                 airline: f.airline || 'Unknown',
                 flightNumber: 'N/A',
-                durationMinutes,
-                stops: stopCount,
+                durationMinutes: 0,
+                stops: 0,
               },
               totalPrice: f.price,
               currency: 'USD',

@@ -46,7 +46,7 @@ const jobProcessor = new SearchJobProcessor(
   resilienceLayer,
 );
 
-const scheduler = new Scheduler(prisma, jobProcessor, evaluateCombosQueue);
+const scheduler = new Scheduler(prisma, jobProcessor, evaluateCombosQueue, rawResultsQueue);
 
 const intervalMs = parseInt(process.env.SCAN_INTERVAL_MS ?? '300000', 10);
 

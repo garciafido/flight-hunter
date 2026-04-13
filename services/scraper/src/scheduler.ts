@@ -11,6 +11,7 @@ export class Scheduler {
     private readonly prisma: PrismaClient,
     private readonly jobProcessor: SearchJobProcessor,
     private readonly evaluateCombosQueue: Queue,
+    private readonly rawResultsQueue: Queue,
   ) {}
 
   /**
@@ -32,6 +33,30 @@ export class Scheduler {
       where: { scrapedAt: { lt: cutoff } },
     });
     return deleted.count;
+  }
+
+  /**
+   * Wait for the analyzer to finish processing all raw-result jobs before
+   * triggering combo evaluation. Polls the raw-results queue every 3s.
+   * After the queue drains, waits an extra 3s for DB commits to flush.
+   */
+  private async waitForRawResultsDrain(): Promise<void> {
+    const MAX_WAIT_MS = 5 * 60_000;
+    const POLL_INTERVAL_MS = 3_000;
+    const DB_FLUSH_BUFFER_MS = 1_000;
+
+    const start = Date.now();
+    while (Date.now() - start < MAX_WAIT_MS) {
+      const counts = await this.rawResultsQueue.getJobCounts('waiting', 'active');
+      const pending = (counts.waiting ?? 0) + (counts.active ?? 0);
+      if (pending === 0) {
+        await new Promise((r) => setTimeout(r, DB_FLUSH_BUFFER_MS));
+        return;
+      }
+      console.log(`Scheduler: waiting for raw-results to drain (${pending} pending)`);
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    }
+    console.warn('Scheduler: raw-results drain timed out after 5 min — proceeding anyway');
   }
 
   async tick(): Promise<void> {
@@ -62,10 +87,13 @@ export class Scheduler {
       try {
         console.log(`Scheduler: executing search "${search.name}" (${search.id})`);
         await this.jobProcessor.execute(search as unknown as SearchConfig);
+
+        // Wait for the analyzer to persist all raw-results to the DB
+        // before triggering combo evaluation. This prevents the race
+        // condition where ComboEvaluator queries the DB and finds 0 rows.
+        await this.waitForRawResultsDrain();
+
         console.log(`Scheduler: search "${search.name}" completed — enqueueing combo evaluation`);
-        // After all flights for this search are enqueued, trigger a single
-        // combo evaluation. The analyzer will build combos once with all
-        // fresh data instead of re-evaluating on every individual flight.
         await this.evaluateCombosQueue.add(
           QUEUE_NAMES.EVALUATE_COMBOS,
           { searchId: search.id },
@@ -78,8 +106,6 @@ export class Scheduler {
   }
 
   async start(intervalMs: number): Promise<void> {
-    // Clean stale results BEFORE the first tick — prevents old data with
-    // wrong prices/dates from contaminating combos on restart.
     const deleted = await this.cleanStaleResults();
     if (deleted > 0) {
       console.log(`Scheduler: cleaned ${deleted} stale flight result(s)`);

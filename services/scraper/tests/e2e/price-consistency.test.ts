@@ -145,14 +145,6 @@ describe('Price Consistency E2E: scraper → analyzer → alert', () => {
     expect(bookingUrl).toContain('+for+2+adults');
   });
 
-  it('scrape URL does NOT contain +for+ (always 1 adult for consistent per-person pricing)', async () => {
-    const source = new GoogleFlightsSource();
-    const depDate = new Date('2026-08-05');
-    const scrapeUrl = source.buildScrapeUrl('AEP', 'CUZ', depDate);
-
-    expect(scrapeUrl).not.toContain('+for+');
-  });
-
   it('full flow: scraper result bookingUrl contains real passenger count', async () => {
     const knownFlight = {
       price: 250,

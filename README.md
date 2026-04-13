@@ -1,6 +1,6 @@
 # Flight Hunter
 
-Sistema de monitoreo de ofertas de vuelos vía Google Flights (Playwright). Sin APIs externas ni API keys: todo el scraping se hace navegando Google Flights directamente, leyendo la solapa **Cheapest** (precios por persona, 1 adulto).
+Sistema de monitoreo de ofertas de vuelos vía Google Flights (Playwright). Sin APIs externas ni API keys: todo el scraping se hace navegando Google Flights directamente, clickeando la solapa **Cheapest** y extrayendo los precios más baratos.
 
 ## Características
 
@@ -19,23 +19,23 @@ Sistema de monitoreo de ofertas de vuelos vía Google Flights (Playwright). Sin 
 ## Arquitectura
 
 ```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Scraper   │───▶│   Analyzer  │───▶│   Notifier  │    │  Dashboard  │
-│  (TS + PW)  │    │ (scoring +  │    │ (email +    │    │  (Next.js)  │
-│             │    │  combos)    │    │  telegram)  │    │             │
-└──────┬──────┘    └──────┬──────┘    └─────────────┘    └──────┬──────┘
-       │                  │                                      │
-       │            ┌─────▼──────┐                               │
-       └───────────▶│   Redis    │◀──────────────────────────────┘
-                    │ (BullMQ)   │
-                    └─────┬──────┘
-                          │
-                    ┌─────▼──────┐
-                    │ PostgreSQL │
-                    └────────────┘
+┌─────────────┐  raw-results  ┌─────────────┐  alerts  ┌─────────────┐
+│   Scraper   │──────────────▶│   Analyzer  │────────▶│   Notifier  │
+│  (TS + PW)  │               │ (scoring +  │         │ (email +    │
+│             │──┐            │  combos)    │         │  telegram)  │
+└─────────────┘  │ evaluate-  └──────┬──────┘         └─────────────┘
+                 │ combos       ▲    │
+                 └──────────────┘    │
+                                     │
+              ┌──────────┐     ┌─────▼──────┐     ┌─────────────┐
+              │  Redis   │◀───▶│ PostgreSQL │     │  Dashboard  │
+              │ (BullMQ) │     └────────────┘     │  (Next.js)  │
+              └──────────┘                        └─────────────┘
 ```
 
-4 microservicios Node.js/TypeScript en un monorepo `pnpm + Turborepo`, comunicados por colas BullMQ sobre Redis, persistiendo en PostgreSQL vía Prisma.
+**Flujo de datos**: el scraper encola vuelos individuales en la cola `raw-results`. El analyzer los persiste, filtra y puntúa (concurrency: 5). Cuando el scraper termina un ciclo completo, espera a que la cola `raw-results` se drene y luego encola un job `evaluate-combos`. El analyzer arma combos con todos los resultados frescos y publica alertas en la cola `alerts`. El notifier envía las alertas por los canales configurados.
+
+4 microservicios Node.js/TypeScript en un monorepo `pnpm + Turborepo`, comunicados por 3 colas BullMQ (`raw-results`, `evaluate-combos`, `alerts`) sobre Redis, persistiendo en PostgreSQL vía Prisma.
 
 ---
 
@@ -201,19 +201,22 @@ El formulario muestra: `[ORIGEN] → [waypoint 1] → [waypoint 2] → ... → [
 Cada tarjeta de waypoint tiene:
 - **Aeropuerto**: código IATA del destino intermedio o final
 - **Tipo de pausa**: `estadía` (rango de noches min/max) o `conexión` (máximo de horas)
-- **Pin**: `primero` o `último` para fijar ese waypoint en esa posición al calcular permutaciones
-- **Bolsos facturados**: cantidad de maletas en ese tramo (sobreescribe el global)
+- **Bolsos facturados**: cantidad de maletas en ese tramo
+- **Pasajeros**: sobreescribe la cantidad global para ese tramo
 
-El ancla **REGRESO** permite configurar los bolsos facturados del vuelo de vuelta.
+El ancla **REGRESO** permite configurar los bolsos facturados y pasajeros del vuelo de vuelta.
+
+**Fechas de salida**: se pueden definir como rango (desde/hasta) o como un listado de fechas puntuales.
 
 **Filtros**
 - **Requerir carry-on**: toggle global (aplica a todos los tramos)
 - **Máximo de escalas**
 - **Máximo de horas de viaje**
 - **Blacklist de aerolíneas**
+- **Aerolíneas preferidas**: las aerolíneas listadas reciben un bonus en el score de conveniencia
 
 **Precios y alertas**
-- **Precio máximo**: descartar resultados por encima de este valor (per-person)
+- **Precio máximo**: descartar combos cuyo costo total de viaje supere este valor
 - **Precio target**: umbral para alerta nivel `good`
 - **Precio dream**: umbral para alerta nivel `urgent`
 - **Intervalo de escaneo**: cada cuántos minutos buscar (mínimo recomendado: 15)
@@ -244,7 +247,6 @@ curl -X POST http://localhost:3000/api/searches \
       {
         "airport": "CUZ",
         "gap": { "type": "stay", "minDays": 7, "maxDays": 10 },
-        "pin": "last",
         "checkedBags": 1
       }
     ],
@@ -257,21 +259,22 @@ curl -X POST http://localhost:3000/api/searches \
     },
     "alertConfig": {
       "scoreThresholds": { "info": 60, "good": 75, "urgent": 90 },
-      "maxPricePerPerson": 700,
-      "targetPricePerPerson": 400,
-      "dreamPricePerPerson": 300,
+      "maxPrice": 1400,
+      "targetPrice": 800,
+      "dreamPrice": 600,
       "currency": "USD"
     },
     "scanIntervalMin": 15
   }'
 ```
 
+> **Nota**: `maxPrice`, `targetPrice` y `dreamPrice` son **total del viaje** (todos los tramos × pasajeros), no per-person. Si supera `maxPrice`, no genera alerta.
+
 **Notas sobre waypoints:**
-- El array `waypoints` define los destinos en cualquier orden; el motor genera todas las permutaciones válidas
-- `pin: "first"` fija ese waypoint como primera parada (no se reordena)
-- `pin: "last"` fija ese waypoint como última parada antes del regreso
+- El array `waypoints` define los destinos en el orden del itinerario
 - `gap.type: "connection"` con `maxHours` modela una escala técnica (no estadía)
 - `checkedBags` en cada waypoint indica maletas en ese tramo específico
+- `passengers` en cada waypoint sobreescribe la cantidad global para ese tramo
 - `returnCheckedBags` es la cantidad de maletas en el vuelo de regreso
 
 #### Búsqueda directa (un solo destino)
@@ -300,9 +303,9 @@ curl -X POST http://localhost:3000/api/searches \
     },
     "alertConfig": {
       "scoreThresholds": { "info": 60, "good": 75, "urgent": 90 },
-      "maxPricePerPerson": 900,
-      "targetPricePerPerson": 600,
-      "dreamPricePerPerson": 450,
+      "maxPrice": 900,
+      "targetPrice": 600,
+      "dreamPrice": 450,
       "currency": "USD"
     },
     "scanIntervalMin": 30
@@ -366,7 +369,7 @@ Cada alerta incluye:
 - **Timeline visual**: origen → parada → destino final con duración de cada vuelo y aerolínea; separadores de estadía entre tramos
 - **Badges de waypoints**: resumen del itinerario generado
 - **Desglose de costos por persona**:
-  - Precio Google Flights (incluye impuestos aeroportuarios; per-person, 1 adulto)
+  - Precio Google Flights (incluye impuestos aeroportuarios; per-person)
   - Estimado carry-on (según política de la aerolínea)
   - Estimado maletas facturadas por tramo
   - Impuestos argentinos PAIS + RG 5232 (como línea separada)
@@ -378,7 +381,9 @@ Cada alerta incluye:
 
 ## Precios: cómo se obtienen
 
-El scraper abre Google Flights con la ruta y fechas configuradas, hace click en la solapa **Cheapest** y extrae el precio más barato disponible. Los precios son **per-person con 1 adulto** tal como los muestra Google (incluyen impuestos aeroportuarios). Los costos de equipaje e impuestos argentinos se calculan por separado en el analyzer.
+El scraper abre Google Flights con la ruta, fecha y cantidad de pasajeros configurados. Hace click en la solapa **Cheapest**, espera a que Google termine de cargar los resultados (detecta la desaparición del indicador "Finding the cheapest booking options..."), y recién ahí extrae los precios.
+
+Google Flights muestra el **precio total para N adultos** (ej. $500 para 2 adultos). El scraper lo marca como `pricePer: 'total'` con `passengers: N`. El analyzer lo divide por N para obtener el precio per-person ($250), que es la unidad base para scoring y comparación. Los costos de equipaje e impuestos argentinos se calculan por separado.
 
 ---
 
@@ -410,4 +415,4 @@ flight-hunter/
 | Telegram con `404 Not Found` | `TELEGRAM_BOT_TOKEN` vacío o incorrecto; el sistema sigue funcionando con email y dashboard |
 | Cambié código y no veo el cambio | El dashboard (Next.js) tiene hot reload; los servicios backend usan `tsx watch`. Si persiste, reiniciar `pnpm dev` |
 | Los costos de equipaje no cuadran | Revisar y actualizar las políticas de aerolínea en `/system` → Configuración |
-| Las permutaciones no incluyen una ruta esperada | Verificar que no haya un `pin` incorrecto en algún waypoint que esté bloqueando el reordenamiento |
+| No se generan alertas pese a tener resultados | Verificar que `maxPrice` (total viaje) sea mayor que el costo del combo más barato. Revisar logs del analyzer: `ComboEvaluator: X recent results` debe ser > 0 |

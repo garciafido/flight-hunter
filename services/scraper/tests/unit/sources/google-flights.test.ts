@@ -45,16 +45,6 @@ describe('GoogleFlightsSource', () => {
   });
 
   describe('URL builders', () => {
-    it('buildScrapeUrl returns a 1-adult URL (no passenger param)', () => {
-      const source = new GoogleFlightsSource();
-      const depDate = new Date('2026-07-25T12:00:00');
-      const url = source.buildScrapeUrl('BUE', 'CUZ', depDate);
-      expect(url).toContain('google.com/travel/flights');
-      expect(url).toContain('BUE');
-      expect(url).toContain('CUZ');
-      expect(url).not.toContain('for+');
-    });
-
     it('buildBookingUrl includes passenger count for N>1', () => {
       const source = new GoogleFlightsSource();
       const depDate = new Date('2026-07-25T12:00:00');
