@@ -13,24 +13,9 @@ function formatDate(d: Date): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-/**
- * Compute the duration of a flight in minutes from its ISO timestamps.
- * Returns 0 when we don't have real scraped times (depTimeStr/arrTimeStr
- * undefined means timeStringToIso fell back to midnight UTC).
- */
-function computeDurationMinutes(
-  depIso: string,
-  arrIso: string,
-  depTimeStr: string | undefined,
-  arrTimeStr: string | undefined,
-): number {
-  if (!depTimeStr || !arrTimeStr) return 0;
-  const depMs = new Date(depIso).getTime();
-  const arrMs = new Date(arrIso).getTime();
-  const diff = arrMs - depMs;
-  if (diff <= 0) return 0;
-  return Math.round(diff / 60000);
-}
+// T6: computeDurationMinutes REMOVED — was computing from wall-clock timestamps
+// in different timezones (BUE=UTC-3, CUZ=UTC-5) giving inflated durations.
+// Now we only use `scrapedDuration` (from "X hr Y min" text) or 0.
 
 export class GoogleFlightsSource {
   readonly name = 'google-flights';
@@ -56,6 +41,18 @@ export class GoogleFlightsSource {
     }
 
     await page.waitForTimeout(4000);
+
+    // T7: Click "Cheapest" tab — Google Flights defaults to "Best" which
+    // may not show the lowest-price options. We want cheapest.
+    try {
+      const cheapestTab = page.locator('text=Cheapest');
+      if (await cheapestTab.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await cheapestTab.click();
+        await page.waitForTimeout(2000);
+      }
+    } catch {
+      // Tab not found or click failed — continue with whatever tab is active
+    }
 
     /* v8 ignore start */
     const flights = await page.evaluate(() => {
@@ -237,80 +234,13 @@ export class GoogleFlightsSource {
     return d.toISOString();
   }
 
-  /**
-   * Best-effort: click on flight listing rows to extract direct booking URLs.
-   * Returns a map of `price-airline` → bookingUrl. Falls back gracefully if
-   * the page structure doesn't match (Google changes DOM frequently).
-   */
-  private async extractBookingLinks(
-    page: import('playwright').Page,
-    flights: Array<{ price: number; airline: string }>,
-    maxClicks = 5,
-  ): Promise<Map<string, string>> {
-    const links = new Map<string, string>();
-    try {
-      // Google Flights listing rows are typically <li> elements or divs
-      // with role="listitem" inside the results container.
-      const rows = await page.locator('li[data-resultid], ul > li').all();
-      if (rows.length === 0) return links;
-
-      // Only try the top N cheapest flights to avoid slowing down too much
-      const toTry = flights
-        .slice()
-        .sort((a, b) => a.price - b.price)
-        .slice(0, maxClicks);
-
-      for (const flight of toTry) {
-        const key = `${flight.price}-${flight.airline}`;
-        if (links.has(key)) continue;
-
-        try {
-          // Find a row that contains this price
-          const priceText = `$${flight.price.toLocaleString('en-US')}`;
-          const row = page.locator(`li:has-text("${priceText}")`).first();
-          if (!(await row.isVisible({ timeout: 1000 }).catch(() => false))) continue;
-
-          await row.click({ timeout: 2000 });
-          await page.waitForTimeout(1500);
-
-          // Look for booking links in the expanded panel.
-          // Google Flights shows "Book with [airline]" buttons that link to
-          // google.com/travel/flights/booking?... or directly to the airline.
-          const bookingLink = await page.evaluate(() => {
-            // Look for links containing "book" or booking-related URLs
-            const anchors = document.querySelectorAll('a[href*="booking"], a[href*="flights/s/"], a[href*="airline"]');
-            for (const a of anchors) {
-              const href = (a as HTMLAnchorElement).href;
-              if (href && href.includes('google.com/travel/flights/') && href.includes('booking')) {
-                return href;
-              }
-            }
-            // Fallback: look for any link that goes to an external airline site
-            const externalLinks = document.querySelectorAll('a[href*="jetsmart"], a[href*="latam"], a[href*="avianca"], a[href*="copaair"], a[href*="aerolineas"]');
-            if (externalLinks.length > 0) {
-              return (externalLinks[0] as HTMLAnchorElement).href;
-            }
-            return null;
-          });
-
-          if (bookingLink) {
-            links.set(key, bookingLink);
-          }
-
-          // Press Escape or click away to close the panel
-          await page.keyboard.press('Escape').catch(() => {});
-          await page.waitForTimeout(500);
-        } catch {
-          // Individual flight click failed — continue with next
-        }
-      }
-    } catch {
-      // Entire extraction failed — return whatever we got
-    }
-    return links;
+  /** URL for SCRAPING — always 1 adult for consistent per-person pricing. */
+  buildScrapeUrl(origin: string, destination: string, depDate: Date): string {
+    return `https://www.google.com/travel/flights?q=One+way+flight+from+${origin}+to+${destination}+on+${formatDate(depDate)}&curr=USD&hl=en`;
   }
 
-  buildOneWayUrl(origin: string, destination: string, depDate: Date, passengers = 1): string {
+  /** URL shown to the USER in alerts — includes the real passenger count. */
+  buildBookingUrl(origin: string, destination: string, depDate: Date, passengers: number): string {
     const paxStr = passengers > 1 ? `+for+${passengers}+adults` : '';
     return `https://www.google.com/travel/flights?q=One+way+flight+from+${origin}+to+${destination}+on+${formatDate(depDate)}${paxStr}&curr=USD&hl=en`;
   }
@@ -331,10 +261,6 @@ export class GoogleFlightsSource {
     return dates;
   }
 
-  async search(_config: SearchConfig, _proxyUrl: string | null): Promise<FlightResult[]> {
-    console.warn(`${this.name}: full-roundtrip search is not used in the waypoint model — returning []`);
-    return [];
-  }
 
   async searchOneWay(
     config: SearchConfig,
@@ -363,28 +289,23 @@ export class GoogleFlightsSource {
 
       for (const dep of dates) {
         const legPax = leg.passengers ?? config.passengers;
-        const url = this.buildOneWayUrl(leg.origin, leg.destination, dep, legPax);
+        // T5: Two separate URLs with clear responsibilities:
+        // - scrapeUrl: always 1 adult → Google shows per-person price, guaranteed
+        // - bookingUrl: real passenger count → user clicks and sees their search
+        const scrapeUrl = this.buildScrapeUrl(leg.origin, leg.destination, dep);
+        const bookingUrl = this.buildBookingUrl(leg.origin, leg.destination, dep, legPax);
         try {
-          const flights = await this.scrapePage(page, url);
+          const flights = await this.scrapePage(page, scrapeUrl);
           console.log(`      ${formatDate(dep)}: ${flights.length} flight(s)`);
 
-          // Direct booking link extraction is disabled for now — the DOM
-          // selectors don't match the current Google Flights structure and the
-          // click-based approach was leaving zombie Chromium processes when
-          // timeouts occurred. Re-enable after debugging with real DOM.
-          // const bookingLinks = await this.extractBookingLinks(page, flights);
-
           for (const f of flights) {
-            const directLink: string | undefined = undefined;
             const stopCount = /nonstop/i.test(f.stops) ? 0 : parseInt(f.stops, 10) || 1;
             const depIso = this.timeStringToIso(dep, f.departureTime, 0);
             const arrIso = this.timeStringToIso(dep, f.arrivalTime, f.nextDay ? 1 : 0);
-            // Prefer the duration scraped from Google Flights text ("8 hr 48 min")
-            // over computing from timestamps, because timestamps are wall-clock
-            // times in different timezones (BUE=UTC-3, CUZ=UTC-5, etc.) and the
-            // naive diff gives wrong results for cross-timezone flights.
-            const durationMinutes = f.scrapedDuration ?? computeDurationMinutes(depIso, arrIso, f.departureTime, f.arrivalTime);
-            // For a one-way leg the inbound is a stub pointing back so the type is satisfied
+            // T6: Only use duration from scraped text ("8 hr 48 min").
+            // Never compute from timestamps — they're wall-clock in different
+            // timezones so the diff is wrong for cross-timezone flights.
+            const durationMinutes = f.scrapedDuration ?? 0;
             allResults.push({
               searchId: config.id,
               source: 'google-flights' as const,
@@ -406,13 +327,12 @@ export class GoogleFlightsSource {
               },
               totalPrice: f.price,
               currency: 'USD',
-              // Google Flights shows the TOTAL price for the number of passengers
-              // in the URL. With "+for+2+adults" the price is for 2 pax.
-              // With 1 pax (default) the price equals per-person.
-              pricePer: 'total' as const,
-              passengers: legPax,
+              // Scraped with 1 adult → price IS per-person. Guaranteed.
+              pricePer: 'person' as const,
+              passengers: 1,
+              // Booking URL has the real passenger count for the user's click-through
+              bookingUrl,
               carryOnIncluded: true,
-              bookingUrl: directLink ?? url,
               scrapedAt: new Date(),
               proxyRegion,
             });

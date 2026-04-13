@@ -44,17 +44,29 @@ describe('GoogleFlightsSource', () => {
     expect(source.name).toBe('google-flights');
   });
 
-  describe('buildOneWayUrl', () => {
-    it('returns a Google Flights URL with one-way format', () => {
+  describe('URL builders', () => {
+    it('buildScrapeUrl returns a 1-adult URL (no passenger param)', () => {
       const source = new GoogleFlightsSource();
-      // Use local noon to avoid UTC midnight timezone issues in formatDate
       const depDate = new Date('2026-07-25T12:00:00');
-      const url = source.buildOneWayUrl('BUE', 'CUZ', depDate);
+      const url = source.buildScrapeUrl('BUE', 'CUZ', depDate);
       expect(url).toContain('google.com/travel/flights');
       expect(url).toContain('BUE');
       expect(url).toContain('CUZ');
-      expect(url).toContain('One+way');
-      expect(url).toMatch(/2026-07-2[45]/); // allow for local timezone offset
+      expect(url).not.toContain('for+');
+    });
+
+    it('buildBookingUrl includes passenger count for N>1', () => {
+      const source = new GoogleFlightsSource();
+      const depDate = new Date('2026-07-25T12:00:00');
+      const url = source.buildBookingUrl('BUE', 'CUZ', depDate, 2);
+      expect(url).toContain('for+2+adults');
+    });
+
+    it('buildBookingUrl omits passenger param for 1 adult', () => {
+      const source = new GoogleFlightsSource();
+      const depDate = new Date('2026-07-25T12:00:00');
+      const url = source.buildBookingUrl('BUE', 'CUZ', depDate, 1);
+      expect(url).not.toContain('for+');
     });
   });
 
@@ -74,6 +86,10 @@ describe('GoogleFlightsSource', () => {
       return {
         goto: vi.fn().mockResolvedValue(undefined),
         evaluate: vi.fn().mockResolvedValue(evaluateResult),
+        locator: vi.fn().mockReturnValue({
+          isVisible: vi.fn().mockResolvedValue(false),
+          click: vi.fn().mockResolvedValue(undefined),
+        }),
         getByText: vi.fn().mockReturnValue({
           isVisible: vi.fn().mockResolvedValue(false),
           click: vi.fn().mockResolvedValue(undefined),
@@ -150,7 +166,7 @@ describe('GoogleFlightsSource', () => {
       expect(mockPage.goto.mock.calls.length).toBeLessThanOrEqual(8);
     });
 
-    it('computes outbound.durationMinutes from real scraped times', async () => {
+    it('uses scrapedDuration from Google Flights text when available', async () => {
       const mockPage = makeMockPage([
         {
           price: 250,
@@ -159,6 +175,7 @@ describe('GoogleFlightsSource', () => {
           departureTime: '8:40 AM',
           arrivalTime: '1:00 PM',
           nextDay: false,
+          scrapedDuration: 260, // "4 hr 20 min" from Google Flights text
         },
       ]);
       const mockBrowser = makeMockBrowser(mockPage);
@@ -168,11 +185,32 @@ describe('GoogleFlightsSource', () => {
       const results = await source.searchOneWay(makeConfig(), makeLeg(), null);
 
       expect(results.length).toBeGreaterThan(0);
-      // 8:40 AM → 1:00 PM = 4h 20m = 260 minutes
       expect(results[0].outbound.durationMinutes).toBe(260);
-      // ISO times should reflect the wall-clock as UTC encoding
       expect(results[0].outbound.departure.time).toMatch(/T08:40:00/);
       expect(results[0].outbound.arrival.time).toMatch(/T13:00:00/);
+    });
+
+    it('sets durationMinutes to 0 when scrapedDuration is missing (never computes from timestamps)', async () => {
+      const mockPage = makeMockPage([
+        {
+          price: 250,
+          airline: 'JetSMART',
+          stops: 'Nonstop',
+          departureTime: '8:40 AM',
+          arrivalTime: '1:00 PM',
+          nextDay: false,
+          // scrapedDuration intentionally missing
+        },
+      ]);
+      const mockBrowser = makeMockBrowser(mockPage);
+      chromiumLaunchMock.mockResolvedValue(mockBrowser);
+
+      const source = new GoogleFlightsSource();
+      const results = await source.searchOneWay(makeConfig(), makeLeg(), null);
+
+      expect(results.length).toBeGreaterThan(0);
+      // Without scrapedDuration, duration is 0 (not computed from timestamps)
+      expect(results[0].outbound.durationMinutes).toBe(0);
     });
 
     it('leaves durationMinutes at 0 when scraped times are missing', async () => {
@@ -191,7 +229,7 @@ describe('GoogleFlightsSource', () => {
       expect(results[0].outbound.departure.time).toMatch(/T00:00:00/);
     });
 
-    it('handles next-day arrival (red-eye) by adding a day to arrival ISO', async () => {
+    it('handles next-day arrival (red-eye) with scrapedDuration', async () => {
       const mockPage = makeMockPage([
         {
           price: 400,
@@ -200,6 +238,7 @@ describe('GoogleFlightsSource', () => {
           departureTime: '11:30 PM',
           arrivalTime: '6:00 AM',
           nextDay: true,
+          scrapedDuration: 390, // "6 hr 30 min" from Google Flights text
         },
       ]);
       const mockBrowser = makeMockBrowser(mockPage);
@@ -213,7 +252,6 @@ describe('GoogleFlightsSource', () => {
       const results = await source.searchOneWay(makeConfig(), leg, null);
 
       expect(results.length).toBeGreaterThan(0);
-      // 11:30 PM on 25th → 6:00 AM on 26th = 6h 30m = 390 minutes
       expect(results[0].outbound.durationMinutes).toBe(390);
       expect(results[0].outbound.departure.time).toContain('2026-07-25');
       expect(results[0].outbound.arrival.time).toContain('2026-07-26');

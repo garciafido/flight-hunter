@@ -46,11 +46,18 @@ export class Scheduler {
   }
 
   start(intervalMs: number): void {
-    console.log(`Scheduler: polling every ${intervalMs / 1000}s, running first tick now...`);
-    void this.tick();
-    this.intervalId = setInterval(() => {
+    // Wait 15s before the first tick so that tsc --watch has time to
+    // recompile the shared package (turbo starts all services in parallel
+    // and the scraper can import stale dist/ on the very first tick).
+    const startupDelayMs = 15_000;
+    console.log(`Scheduler: waiting ${startupDelayMs / 1000}s for shared to compile, then polling every ${intervalMs / 1000}s...`);
+    setTimeout(() => {
+      console.log('Scheduler: running first tick now...');
       void this.tick();
-    }, intervalMs);
+      this.intervalId = setInterval(() => {
+        void this.tick();
+      }, intervalMs);
+    }, startupDelayMs);
   }
 
   stop(): void {
