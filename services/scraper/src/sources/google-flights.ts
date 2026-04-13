@@ -46,12 +46,28 @@ export class GoogleFlightsSource {
     await page.waitForTimeout(4000);
 
     // T7: Click "Cheapest" tab — Google Flights defaults to "Best" which
-    // may not show the lowest-price options. We want cheapest.
+    // shows higher-priced "best value" results. We want strictly cheapest.
+    // The tab text is "Cheapest from $XXX" so we match partial text.
     try {
-      const cheapestTab = page.locator('text=Cheapest');
-      if (await cheapestTab.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await cheapestTab.click();
-        await page.waitForTimeout(2000);
+      // Try multiple selectors — Google's DOM varies
+      const selectors = [
+        'button:has-text("Cheapest")',
+        '[role="tab"]:has-text("Cheapest")',
+        'text=Cheapest',
+      ];
+      let clicked = false;
+      for (const sel of selectors) {
+        const tab = page.locator(sel).first();
+        if (await tab.isVisible({ timeout: 1500 }).catch(() => false)) {
+          await tab.click();
+          clicked = true;
+          break;
+        }
+      }
+      if (clicked) {
+        // Wait for the results to refresh after tab switch
+        await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+        await page.waitForTimeout(3000);
       }
     } catch {
       // Tab not found or click failed — continue with whatever tab is active
