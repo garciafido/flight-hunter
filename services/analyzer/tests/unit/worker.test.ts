@@ -12,7 +12,7 @@ import { Publisher } from '../../src/publisher.js';
 function makeRawJob(overrides: Partial<RawResultJob> = {}): RawResultJob {
   return {
     searchId: 'search-1',
-    source: 'kiwi',
+    source: 'google-flights',
     outbound: {
       departure: { airport: 'BUE', time: '10:00' },
       arrival: { airport: 'LIM', time: '14:00' },

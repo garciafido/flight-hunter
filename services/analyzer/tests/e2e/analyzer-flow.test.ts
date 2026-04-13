@@ -72,7 +72,7 @@ describe('Analyzer E2E Flow', () => {
     await worker.process(
       makeJob({
         searchId: 'search-1',
-        source: 'kiwi',
+        source: 'google-flights',
         outbound: {
           departure: { airport: 'AEP', time: '2026-07-24T10:00:00Z' },
           arrival: { airport: 'LIM', time: '2026-07-24T15:00:00Z' },
@@ -100,7 +100,7 @@ describe('Analyzer E2E Flow', () => {
         pricePer: 'person',
         passengers: 2,
         carryOnIncluded: true,
-        bookingUrl: 'https://kiwi.com/booking/abc',
+        bookingUrl: 'https://www.google.com/travel/flights/booking/abc',
         scrapedAt: '2026-04-08T12:00:00Z',
         proxyRegion: 'CL',
       }),
@@ -167,7 +167,7 @@ describe('Analyzer E2E Flow', () => {
     await worker.process(
       makeJob({
         searchId: 'search-1',
-        source: 'kiwi',
+        source: 'google-flights',
         outbound: {
           departure: { airport: 'AEP', time: '2026-07-24T10:00:00Z' },
           arrival: { airport: 'CUZ', time: '2026-07-24T15:00:00Z' },

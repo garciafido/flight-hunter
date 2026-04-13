@@ -20,7 +20,7 @@ describe('OutlierDetector', () => {
   it('returns not suspicious for normal price (no history, no cross-source)', async () => {
     const prisma = makePrisma([]);
     detector = new OutlierDetector(prisma);
-    const result = await detector.check('search-1', 500, 'kiwi', null);
+    const result = await detector.check('search-1', 500, 'google-flights', null);
     expect(result.suspicious).toBe(false);
   });
 
@@ -28,7 +28,7 @@ describe('OutlierDetector', () => {
     const prisma = makePrisma([]);
     detector = new OutlierDetector(prisma);
     // avg48h = 500, price = 100 (20% of avg) → was suspicious, now disabled
-    const result = await detector.check('search-1', 100, 'kiwi', 500);
+    const result = await detector.check('search-1', 100, 'google-flights', 500);
     expect(result.suspicious).toBe(false);
   });
 
@@ -36,7 +36,7 @@ describe('OutlierDetector', () => {
     const prisma = makePrisma([]);
     detector = new OutlierDetector(prisma);
     // avg48h = 500, price = 150 (30% exactly) → not suspicious
-    const result = await detector.check('search-1', 150, 'kiwi', 500);
+    const result = await detector.check('search-1', 150, 'google-flights', 500);
     expect(result.suspicious).toBe(false);
   });
 
@@ -44,60 +44,59 @@ describe('OutlierDetector', () => {
     const prisma = makePrisma([]);
     detector = new OutlierDetector(prisma);
     // avg48h = 500, price = 200 (40%) → not suspicious
-    const result = await detector.check('search-1', 200, 'kiwi', 500);
+    const result = await detector.check('search-1', 200, 'google-flights', 500);
     expect(result.suspicious).toBe(false);
   });
 
-  it('flags cross-source outlier when price < 50% of median from 2+ sources', async () => {
+  it('flags cross-source outlier when price < 50% of median from 2+ sources (no-op with single source)', async () => {
+    // With only google-flights, cross-source check never triggers (all rows same source)
     const prisma = makePrisma([
-      { pricePerPerson: 400, source: 'amadeus' },
-      { pricePerPerson: 600, source: 'travelpayouts' },
+      { pricePerPerson: 400, source: 'google-flights' },
+      { pricePerPerson: 600, source: 'google-flights' },
     ]);
     detector = new OutlierDetector(prisma);
-    // median = 500, price = 200 (40% of median) → suspicious
-    const result = await detector.check('search-1', 200, 'kiwi', null);
-    expect(result.suspicious).toBe(true);
-    expect(result.suspicionReason).toBe('price too low vs other sources');
+    // median = 500, price = 200 (40% of median) → cross-source is no-op (only 1 distinct source)
+    const result = await detector.check('search-1', 200, 'google-flights', null);
+    expect(result.suspicious).toBe(false);
   });
 
   it('does not flag cross-source when only 1 other source exists', async () => {
     // Only 1 source → need at least 2
     const prisma = makePrisma([
-      { pricePerPerson: 400, source: 'amadeus' },
-      { pricePerPerson: 450, source: 'amadeus' }, // same source, still 1 distinct source
+      { pricePerPerson: 400, source: 'google-flights' },
+      { pricePerPerson: 450, source: 'google-flights' }, // same source, still 1 distinct source
     ]);
     detector = new OutlierDetector(prisma);
-    const result = await detector.check('search-1', 100, 'kiwi', null);
+    const result = await detector.check('search-1', 100, 'google-flights', null);
     expect(result.suspicious).toBe(false);
   });
 
   it('does not flag cross-source when price is >= 50% of median', async () => {
     const prisma = makePrisma([
-      { pricePerPerson: 400, source: 'amadeus' },
-      { pricePerPerson: 600, source: 'travelpayouts' },
+      { pricePerPerson: 400, source: 'google-flights' },
+      { pricePerPerson: 600, source: 'google-flights' },
     ]);
     detector = new OutlierDetector(prisma);
     // median = 500, price = 300 (60%) → ok
-    const result = await detector.check('search-1', 300, 'kiwi', null);
+    const result = await detector.check('search-1', 300, 'google-flights', null);
     expect(result.suspicious).toBe(false);
   });
 
-  it('with historical check disabled, cross-source still works', async () => {
+  it('with historical check disabled, cross-source is a no-op (single source)', async () => {
     const prisma = makePrisma([
-      { pricePerPerson: 400, source: 'amadeus' },
-      { pricePerPerson: 600, source: 'travelpayouts' },
+      { pricePerPerson: 400, source: 'google-flights' },
+      { pricePerPerson: 600, source: 'google-flights' },
     ]);
     detector = new OutlierDetector(prisma);
-    // avg48h = 500, price = 50 → historical disabled, cross-source fires
-    const result = await detector.check('search-1', 50, 'kiwi', 500);
-    expect(result.suspicious).toBe(true);
-    expect(result.suspicionReason).toBe('price too low vs other sources');
+    // avg48h = 500, price = 50 → historical disabled, cross-source is no-op (1 distinct source)
+    const result = await detector.check('search-1', 50, 'google-flights', 500);
+    expect(result.suspicious).toBe(false);
   });
 
   it('does not flag when avg48h is 0', async () => {
     const prisma = makePrisma([]);
     detector = new OutlierDetector(prisma);
-    const result = await detector.check('search-1', 1, 'kiwi', 0);
+    const result = await detector.check('search-1', 1, 'google-flights', 0);
     expect(result.suspicious).toBe(false);
   });
 });

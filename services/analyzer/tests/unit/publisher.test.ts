@@ -7,7 +7,7 @@ import type { PrismaClient } from '@flight-hunter/shared/db';
 function makeFlight(overrides: Partial<FlightResult> = {}): FlightResult {
   return {
     searchId: 'search-1',
-    source: 'kiwi',
+    source: 'google-flights',
     outbound: {
       departure: { airport: 'SCL', time: '2024-03-15T10:00:00Z' },
       arrival: { airport: 'MIA', time: '2024-03-15T18:00:00Z' },
@@ -92,7 +92,7 @@ describe('Publisher', () => {
     expect(prisma.flightResult.create).toHaveBeenCalledOnce();
     const data = vi.mocked(prisma.flightResult.create).mock.calls[0][0].data;
     expect(data.searchId).toBe('search-1');
-    expect(data.source).toBe('kiwi');
+    expect(data.source).toBe('google-flights');
     expect(Number(data.pricePerPerson)).toBe(800);
     expect(data.currency).toBe('USD');
     expect(data.bookingUrl).toBe('https://example.com/book');

@@ -176,7 +176,7 @@ describe('SearchJobProcessor waypoint dispatch', () => {
   });
 
   it('skips sources without searchOneWay', async () => {
-    const plainSource = { name: 'kiwi', search: vi.fn().mockResolvedValue([]) };
+    const plainSource = { name: 'google-flights', search: vi.fn().mockResolvedValue([]) };
 
     const processor = new SearchJobProcessor(
       [plainSource as never],

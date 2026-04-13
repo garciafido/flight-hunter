@@ -59,7 +59,7 @@ describe('Notifier E2E Flow', () => {
         arrivalTime: '2026-08-08T10:00:00Z',
         stopoverAirport: 'LIM',
         stopoverDurationDays: 3,
-        bookingUrl: 'https://kiwi.com/booking/abc',
+        bookingUrl: 'https://www.google.com/travel/flights/booking/abc',
       },
     });
 
@@ -181,7 +181,7 @@ describe('Notifier E2E Flow', () => {
         departureTime: '2026-07-24T08:00:00Z',
         arrivalAirport: 'AEP',
         arrivalTime: '2026-08-08T10:00:00Z',
-        bookingUrl: 'https://kiwi.com/booking/abc',
+        bookingUrl: 'https://www.google.com/travel/flights/booking/abc',
       },
     };
 

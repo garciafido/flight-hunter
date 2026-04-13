@@ -19,7 +19,7 @@ function makeFilters(overrides: Partial<SearchFilters> = {}): SearchFilters {
 function makeFlight(overrides: Partial<FlightResult> = {}): FlightResult {
   return {
     searchId: 'search-1',
-    source: 'kiwi',
+    source: 'google-flights',
     outbound: {
       departure: { airport: 'SCL', time: '10:00' },
       arrival: { airport: 'MIA', time: '18:00' },

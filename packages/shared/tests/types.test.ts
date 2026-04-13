@@ -56,8 +56,8 @@ describe('Flight types', () => {
   });
 
   it('FlightSource union accepts valid values', () => {
-    const sources: FlightSource[] = ['kiwi', 'skyscanner', 'google-flights'];
-    expect(sources).toHaveLength(3);
+    const sources: FlightSource[] = ['google-flights'];
+    expect(sources).toHaveLength(1);
   });
 
   it('ProxyRegion union accepts CL and AR', () => {
@@ -68,7 +68,7 @@ describe('Flight types', () => {
   it('FlightResult can be constructed without optional stopover', () => {
     const result: FlightResult = {
       searchId: 'search-1',
-      source: 'kiwi',
+      source: 'google-flights',
       outbound: {
         departure: { airport: 'SCL', time: '10:00' },
         arrival: { airport: 'MIA', time: '18:00' },
@@ -90,7 +90,7 @@ describe('Flight types', () => {
       pricePer: 'person',
       passengers: 2,
       carryOnIncluded: true,
-      bookingUrl: 'https://kiwi.com/booking/123',
+      bookingUrl: 'https://www.google.com/travel/flights/booking/123',
       scrapedAt: new Date('2025-06-01T00:00:00Z'),
       proxyRegion: 'CL',
     };
@@ -102,7 +102,7 @@ describe('Flight types', () => {
   it('FlightResult can be constructed with optional stopover', () => {
     const result: FlightResult = {
       searchId: 'search-2',
-      source: 'skyscanner',
+      source: 'google-flights',
       outbound: {
         departure: { airport: 'SCL', time: '10:00' },
         arrival: { airport: 'BOG', time: '15:00' },
@@ -130,7 +130,7 @@ describe('Flight types', () => {
       pricePer: 'total',
       passengers: 2,
       carryOnIncluded: false,
-      bookingUrl: 'https://skyscanner.com/booking/456',
+      bookingUrl: 'https://www.google.com/travel/flights/booking/456',
       scrapedAt: new Date('2025-06-01T00:00:00Z'),
       proxyRegion: 'AR',
     };

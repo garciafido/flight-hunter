@@ -13,7 +13,7 @@ const validLeg = {
 
 const validRawResult = {
   searchId: 'search-1',
-  source: 'kiwi' as const,
+  source: 'google-flights' as const,
   outbound: validLeg,
   inbound: {
     departure: { airport: 'MIA', time: '20:00' },
@@ -28,7 +28,7 @@ const validRawResult = {
   pricePer: 'person' as const,
   passengers: 2,
   carryOnIncluded: true,
-  bookingUrl: 'https://kiwi.com/booking/123',
+  bookingUrl: 'https://www.google.com/travel/flights/booking/123',
   scrapedAt: '2025-06-01T00:00:00.000Z',
   proxyRegion: 'CL' as const,
 };
@@ -53,7 +53,7 @@ const validAlertJob = {
     arrivalAirport: 'MIA',
     departureTime: '2025-07-10T10:00:00.000Z',
     arrivalTime: '2025-07-10T18:00:00.000Z',
-    bookingUrl: 'https://kiwi.com/booking/123',
+    bookingUrl: 'https://www.google.com/travel/flights/booking/123',
   },
 };
 
@@ -157,7 +157,7 @@ describe('RawResultJobSchema', () => {
   });
 
   it('accepts all valid source values', () => {
-    for (const source of ['kiwi', 'skyscanner', 'google-flights'] as const) {
+    for (const source of ['google-flights'] as const) {
       const result = RawResultJobSchema.safeParse({ ...validRawResult, source });
       expect(result.success).toBe(true);
     }
@@ -293,7 +293,7 @@ describe('AlertJobSchema', () => {
         arrivalAirport: 'MIA',
         departureTime: '2025-07-10T10:00:00.000Z',
         arrivalTime: '2025-07-10T18:00:00.000Z',
-        bookingUrl: 'https://kiwi.com/booking/123',
+        bookingUrl: 'https://www.google.com/travel/flights/booking/123',
       },
       combo: {
         legs: [
