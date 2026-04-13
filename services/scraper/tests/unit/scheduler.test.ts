@@ -30,6 +30,12 @@ describe('Scheduler', () => {
         findMany: vi.fn().mockResolvedValue([makeSearch()]),
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
+      alert: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      flightCombo: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
       flightResult: {
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       },

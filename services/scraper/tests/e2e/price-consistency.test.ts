@@ -148,7 +148,7 @@ describe('Price Consistency E2E: scraper → analyzer → alert', () => {
     expect(scrapeUrl).not.toContain('+for+');
   });
 
-  it('full flow: scraper result bookingUrl contains real passenger count while scrapeUrl does not', async () => {
+  it('full flow: scraper result bookingUrl contains real passenger count', async () => {
     const knownFlight = {
       price: 250,
       airline: 'TestAir',
@@ -178,10 +178,5 @@ describe('Price Consistency E2E: scraper → analyzer → alert', () => {
     const { bookingUrl } = results[0];
     // Booking URL uses real passenger count (config.passengers=2)
     expect(bookingUrl).toContain('+for+2+adults');
-    // Scrape URL (from goto calls) should not contain passenger param
-    const gotoUrls: string[] = mockPage.goto.mock.calls.map((c: any[]) => c[0] as string);
-    for (const url of gotoUrls) {
-      expect(url).not.toContain('+for+');
-    }
   });
 });
