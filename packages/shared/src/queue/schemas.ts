@@ -106,3 +106,9 @@ export const AlertJobSchema = z.object({
 });
 
 export type AlertJob = z.infer<typeof AlertJobSchema>;
+
+export const EvaluateCombosJobSchema = z.object({
+  searchId: z.string(),
+});
+
+export type EvaluateCombosJob = z.infer<typeof EvaluateCombosJobSchema>;

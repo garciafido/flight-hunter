@@ -27,6 +27,7 @@ startRuntimeConfigPoller(prisma, {
 });
 
 const rawResultsQueue = new Queue(QUEUE_NAMES.RAW_RESULTS, { connection: redis });
+const evaluateCombosQueue = new Queue(QUEUE_NAMES.EVALUATE_COMBOS, { connection: redis });
 
 const googleFlightsSource = new GoogleFlightsSource();
 
@@ -45,7 +46,7 @@ const jobProcessor = new SearchJobProcessor(
   resilienceLayer,
 );
 
-const scheduler = new Scheduler(prisma, jobProcessor);
+const scheduler = new Scheduler(prisma, jobProcessor, evaluateCombosQueue);
 
 const intervalMs = parseInt(process.env.SCAN_INTERVAL_MS ?? '300000', 10);
 

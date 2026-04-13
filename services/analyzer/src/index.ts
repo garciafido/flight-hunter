@@ -3,9 +3,10 @@ import { Worker, Queue } from 'bullmq';
 import { PrismaClient } from '@flight-hunter/shared/db';
 import { createLogger } from '@flight-hunter/shared/logger';
 import { Redis } from 'ioredis';
-import { QUEUE_NAMES, RawResultJobSchema, startRuntimeConfigPoller } from '@flight-hunter/shared';
-import type { RawResultJob } from '@flight-hunter/shared';
+import { QUEUE_NAMES, RawResultJobSchema, EvaluateCombosJobSchema, startRuntimeConfigPoller } from '@flight-hunter/shared';
+import type { RawResultJob, EvaluateCombosJob } from '@flight-hunter/shared';
 import { AnalyzerWorker } from './worker.js';
+import { ComboEvaluator } from './combo-evaluator.js';
 import { FilterEngine } from './filters/filter-engine.js';
 import { DealDetector } from './detection/deal-detector.js';
 import { HistoryService } from './detection/history.js';
@@ -59,11 +60,33 @@ const worker = new Worker<RawResultJob>(
 );
 
 worker.on('failed', (job, err) => {
-  logger.error({ jobId: job?.id, err }, 'Analyzer job failed');
+  logger.error({ jobId: job?.id, err }, 'Analyzer raw-result job failed');
 });
 
 worker.on('completed', (job) => {
-  logger.info({ jobId: job.id }, 'Analyzer job completed');
+  logger.info({ jobId: job.id }, 'Analyzer raw-result job completed');
+});
+
+// Combo evaluation worker — triggered once per search after the scraper
+// finishes a full tick, instead of on every individual flight result.
+const comboEvaluator = new ComboEvaluator({ prisma, dealDetector, publisher });
+
+const comboWorker = new Worker<EvaluateCombosJob>(
+  QUEUE_NAMES.EVALUATE_COMBOS,
+  async (job) => {
+    const data = EvaluateCombosJobSchema.parse(job.data);
+    logger.info({ searchId: data.searchId }, 'Evaluating combos');
+    await comboEvaluator.evaluate(data.searchId);
+  },
+  { connection: redis },
+);
+
+comboWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, err }, 'Combo evaluation job failed');
+});
+
+comboWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id }, 'Combo evaluation job completed');
 });
 
 // Daily retention job: runs at midnight, deletes old records

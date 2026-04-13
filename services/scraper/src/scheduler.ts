@@ -1,6 +1,7 @@
+import type { Queue } from 'bullmq';
 import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { SearchConfig } from '@flight-hunter/shared';
-import { getRuntimeConfig } from '@flight-hunter/shared';
+import { getRuntimeConfig, QUEUE_NAMES } from '@flight-hunter/shared';
 import type { SearchJobProcessor } from './jobs/search-job.js';
 
 export class Scheduler {
@@ -9,6 +10,7 @@ export class Scheduler {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly jobProcessor: SearchJobProcessor,
+    private readonly evaluateCombosQueue: Queue,
   ) {}
 
   /**
@@ -60,7 +62,15 @@ export class Scheduler {
       try {
         console.log(`Scheduler: executing search "${search.name}" (${search.id})`);
         await this.jobProcessor.execute(search as unknown as SearchConfig);
-        console.log(`Scheduler: search "${search.name}" completed`);
+        console.log(`Scheduler: search "${search.name}" completed — enqueueing combo evaluation`);
+        // After all flights for this search are enqueued, trigger a single
+        // combo evaluation. The analyzer will build combos once with all
+        // fresh data instead of re-evaluating on every individual flight.
+        await this.evaluateCombosQueue.add(
+          QUEUE_NAMES.EVALUATE_COMBOS,
+          { searchId: search.id },
+          { attempts: 2, backoff: { type: 'exponential', delay: 2000 } },
+        );
       } catch (err) {
         console.error(`Scheduler: search "${search.name}" failed:`, err);
       }

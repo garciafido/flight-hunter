@@ -23,8 +23,10 @@ describe('Scheduler', () => {
     };
   };
   let jobProcessor: { execute: ReturnType<typeof vi.fn> };
+  let evaluateCombosQueue: { add: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
+    evaluateCombosQueue = { add: vi.fn().mockResolvedValue(undefined) };
     prisma = {
       search: {
         findMany: vi.fn().mockResolvedValue([makeSearch()]),
@@ -56,7 +58,7 @@ describe('Scheduler', () => {
       const search2 = makeSearch({ id: 'search-2' });
       prisma.search.findMany.mockResolvedValue([search1, search2]);
 
-      const scheduler = new Scheduler(prisma as never, jobProcessor as never);
+      const scheduler = new Scheduler(prisma as never, jobProcessor as never, evaluateCombosQueue as never);
       await scheduler.tick();
 
       expect(prisma.search.findMany).toHaveBeenCalledWith(
@@ -73,7 +75,7 @@ describe('Scheduler', () => {
       prisma.search.findMany.mockResolvedValue([search1, search2]);
       jobProcessor.execute.mockRejectedValueOnce(new Error('execute failed'));
 
-      const scheduler = new Scheduler(prisma as never, jobProcessor as never);
+      const scheduler = new Scheduler(prisma as never, jobProcessor as never, evaluateCombosQueue as never);
       await expect(scheduler.tick()).resolves.toBeUndefined();
 
       expect(jobProcessor.execute).toHaveBeenCalledTimes(2);
@@ -82,7 +84,7 @@ describe('Scheduler', () => {
     it('does nothing when no active searches exist', async () => {
       prisma.search.findMany.mockResolvedValue([]);
 
-      const scheduler = new Scheduler(prisma as never, jobProcessor as never);
+      const scheduler = new Scheduler(prisma as never, jobProcessor as never, evaluateCombosQueue as never);
       await scheduler.tick();
 
       expect(jobProcessor.execute).not.toHaveBeenCalled();
@@ -91,7 +93,7 @@ describe('Scheduler', () => {
     it('auto-resumes snoozed searches whose snoozedUntil has passed', async () => {
       prisma.search.findMany.mockResolvedValue([]);
 
-      const scheduler = new Scheduler(prisma as never, jobProcessor as never);
+      const scheduler = new Scheduler(prisma as never, jobProcessor as never, evaluateCombosQueue as never);
       await scheduler.tick();
 
       expect(prisma.search.updateMany).toHaveBeenCalledWith(
@@ -113,7 +115,7 @@ describe('Scheduler', () => {
         return [];
       });
 
-      const scheduler = new Scheduler(prisma as never, jobProcessor as never);
+      const scheduler = new Scheduler(prisma as never, jobProcessor as never, evaluateCombosQueue as never);
       await scheduler.tick();
 
       expect(callOrder).toEqual(['updateMany', 'findMany']);
@@ -123,7 +125,7 @@ describe('Scheduler', () => {
       // Snoozed searches are filtered out by status='active' query
       prisma.search.findMany.mockResolvedValue([]);
 
-      const scheduler = new Scheduler(prisma as never, jobProcessor as never);
+      const scheduler = new Scheduler(prisma as never, jobProcessor as never, evaluateCombosQueue as never);
       await scheduler.tick();
 
       expect(jobProcessor.execute).not.toHaveBeenCalled();
@@ -133,7 +135,7 @@ describe('Scheduler', () => {
   describe('start', () => {
     it('calls tick repeatedly on the given interval', async () => {
       prisma.search.findMany.mockResolvedValue([]);
-      const scheduler = new Scheduler(prisma as never, jobProcessor as never);
+      const scheduler = new Scheduler(prisma as never, jobProcessor as never, evaluateCombosQueue as never);
       await scheduler.start(5000);
 
       // start() already ran cleanStaleResults + tick (1 call).
@@ -145,7 +147,7 @@ describe('Scheduler', () => {
 
     it('calls tick immediately on start', async () => {
       prisma.search.findMany.mockResolvedValue([]);
-      const scheduler = new Scheduler(prisma as never, jobProcessor as never);
+      const scheduler = new Scheduler(prisma as never, jobProcessor as never, evaluateCombosQueue as never);
       await scheduler.start(5000);
 
       // start() is async and awaited, so the immediate tick has already run
@@ -156,7 +158,7 @@ describe('Scheduler', () => {
   describe('stop', () => {
     it('stops calling tick after stop() is called', async () => {
       prisma.search.findMany.mockResolvedValue([]);
-      const scheduler = new Scheduler(prisma as never, jobProcessor as never);
+      const scheduler = new Scheduler(prisma as never, jobProcessor as never, evaluateCombosQueue as never);
       await scheduler.start(5000);
 
       // start() ran tick immediately (1 call). Advance 1 interval → 2nd call
@@ -171,13 +173,13 @@ describe('Scheduler', () => {
     });
 
     it('calling stop when not started does nothing', () => {
-      const scheduler = new Scheduler(prisma as never, jobProcessor as never);
+      const scheduler = new Scheduler(prisma as never, jobProcessor as never, evaluateCombosQueue as never);
       expect(() => scheduler.stop()).not.toThrow();
     });
 
     it('calling stop twice does nothing', async () => {
       prisma.search.findMany.mockResolvedValue([]);
-      const scheduler = new Scheduler(prisma as never, jobProcessor as never);
+      const scheduler = new Scheduler(prisma as never, jobProcessor as never, evaluateCombosQueue as never);
       await scheduler.start(5000);
       scheduler.stop();
       expect(() => scheduler.stop()).not.toThrow();
