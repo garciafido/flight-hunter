@@ -23,15 +23,18 @@ export class GoogleFlightsSource {
   private async scrapePage(
     page: import('playwright').Page,
     url: string,
-  ): Promise<Array<{
-    price: number;
-    airline: string;
-    stops: string;
-    departureTime?: string;  // "8:40 AM"
-    arrivalTime?: string;    // "5:20 PM" (may be "5:20 PM+1" for next day)
-    nextDay?: boolean;       // true if arrival is next day
-  scrapedDuration?: number;  // minutes, extracted from "X hr Y min" text
-  }>>; pageUrl: string }> {
+  ): Promise<{
+    flights: Array<{
+      price: number;
+      airline: string;
+      stops: string;
+      departureTime?: string;
+      arrivalTime?: string;
+      nextDay?: boolean;
+      scrapedDuration?: number;
+    }>;
+    pageUrl: string;
+  }> {
     await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
 
     const proceed = page.getByText('Proceed anyway');

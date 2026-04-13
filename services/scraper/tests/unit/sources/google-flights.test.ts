@@ -86,6 +86,7 @@ describe('GoogleFlightsSource', () => {
       return {
         goto: vi.fn().mockResolvedValue(undefined),
         evaluate: vi.fn().mockResolvedValue(evaluateResult),
+        url: vi.fn().mockReturnValue('https://www.google.com/travel/flights/search?tfs=mock'),
         locator: vi.fn().mockReturnValue({
           isVisible: vi.fn().mockResolvedValue(false),
           click: vi.fn().mockResolvedValue(undefined),
