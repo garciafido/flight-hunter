@@ -94,8 +94,13 @@ export const AlertJobSchema = z.object({
     carryOnEstimateUSD: z.number().optional(),
     // Sum of checked-bag estimates across all legs (USD per pax), only when bags > 0.
     checkedBagEstimateUSD: z.number().optional(),
-    // Estimated AR-resident total: (totalPrice + carryOn + checkedBag) * AR_TAX_MULTIPLIER.
-    // Always populated; UI decides whether/how to show it.
+    // Grand totals for the entire group (all pax, all legs, all baggage).
+    // This is THE number the user cares about: "how much does this trip cost me".
+    groupTotalUSD: z.number().optional(),
+    // Same but with Argentine taxes applied (PAIS + RG 5232).
+    groupTotalWithTaxUSD: z.number().optional(),
+    // Legacy per-person estimate (kept for backwards compat, may be misleading
+    // when legs have different passenger counts).
     argTaxEstimateUSD: z.number().optional(),
   }).optional(),
 });

@@ -168,9 +168,10 @@ export class Publisher {
       0,
     );
 
-    // Argentine total: (group ticket + carry-on + checked bags) ÷ global pax to get effective per-person.
-    const effectivePerPerson = (groupTicketTotal + (totalCarryOn ?? 0) + totalCheckedBag) / Math.max(1, globalPassengers);
-    const argTotal = estimateArgentineTotalUSD(effectivePerPerson);
+    // Grand total for the entire group: tickets + carry-on + checked bags.
+    const groupTotalUSD = groupTicketTotal + (totalCarryOn ?? 0) + totalCheckedBag;
+    // With Argentine taxes applied to the full amount.
+    const groupTotalWithTaxUSD = estimateArgentineTotalUSD(groupTotalUSD);
 
     const alertJob: AlertJob = {
       searchId,
@@ -206,7 +207,8 @@ export class Publisher {
         ...(waypoints ? { waypoints } : {}),
         ...(totalCarryOn !== undefined ? { carryOnEstimateUSD: totalCarryOn } : {}),
         ...(checkedBagFieldOrUndefined !== undefined ? { checkedBagEstimateUSD: checkedBagFieldOrUndefined } : {}),
-        argTaxEstimateUSD: argTotal,
+        groupTotalUSD: Math.round(groupTotalUSD),
+        groupTotalWithTaxUSD: Math.round(groupTotalWithTaxUSD),
       },
     };
 

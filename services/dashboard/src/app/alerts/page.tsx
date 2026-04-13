@@ -92,17 +92,15 @@ export default function AlertsPage() {
   }
 
   function buildShareText(alert: any, searchName: string): string {
-    const combo = alert.comboInfo as { legs?: any[]; totalPrice?: number; waypoints?: any[]; carryOnEstimateUSD?: number; checkedBagEstimateUSD?: number; argTaxEstimateUSD?: number } | null;
+    const combo = alert.comboInfo as { legs?: any[]; totalPrice?: number; waypoints?: any[]; carryOnEstimateUSD?: number; checkedBagEstimateUSD?: number; groupTotalUSD?: number; groupTotalWithTaxUSD?: number; argTaxEstimateUSD?: number } | null;
     const isCombo = !!(combo && Array.isArray(combo.legs) && combo.legs.length > 0);
     const levelEmoji = alert.level === 'urgent' ? '🚨' : alert.level === 'good' ? '✅' : 'ℹ️';
 
     if (isCombo) {
       const currency = combo!.legs![0]?.currency ?? 'USD';
       const totalPrice = combo!.totalPrice;
-      const carryOn = combo!.carryOnEstimateUSD;
-      const checkedBag = combo!.checkedBagEstimateUSD;
-      const argTotal = combo!.argTaxEstimateUSD;
-      const totalWithExtras = Number(totalPrice ?? 0) + (carryOn ?? 0) + (checkedBag ?? 0);
+      const groupTotal = combo!.groupTotalUSD;
+      const groupWithTax = combo!.groupTotalWithTaxUSD;
       const lines: string[] = [];
       lines.push(`${levelEmoji} *${searchName}*`);
       if (combo!.waypoints && combo!.waypoints.length > 0) {
@@ -113,18 +111,13 @@ export default function AlertsPage() {
         ).join(' · ');
         lines.push(summary);
       }
-      lines.push(`💰 *${currency} ${totalPrice} / persona* (${combo!.legs!.length} tramos)`);
-      if (carryOn !== undefined && carryOn > 0) {
-        lines.push(`🧳 +USD ${carryOn} carry-on (estimado)`);
+      if (groupTotal !== undefined) {
+        lines.push(`💰 *USD ${groupTotal.toLocaleString()} total* (tickets + equipaje, ${combo!.legs!.length} tramos)`);
+      } else {
+        lines.push(`💰 *${currency} ${totalPrice}* (${combo!.legs!.length} tramos)`);
       }
-      if (checkedBag !== undefined && checkedBag > 0) {
-        lines.push(`🧳 +USD ${checkedBag} valija despachada (estimado)`);
-      }
-      if ((carryOn ?? 0) + (checkedBag ?? 0) > 0) {
-        lines.push(`💵 *Total con equipaje: USD ${totalWithExtras.toLocaleString()} / persona*`);
-      }
-      if (argTotal !== undefined) {
-        lines.push(`🇦🇷 con impuestos AR (PAIS+RG5232): *USD ${argTotal.toLocaleString()}*`);
+      if (groupWithTax !== undefined) {
+        lines.push(`🇦🇷 *USD ${groupWithTax.toLocaleString()} con impuestos AR* (PAIS + RG 5232)`);
       }
       lines.push('');
       let anyHasTime = false;
@@ -316,52 +309,44 @@ export default function AlertsPage() {
 
       {alerts.map((a: any) => {
         const fb = feedbackState[a.id];
-        const combo = a.comboInfo as { legs?: any[]; totalPrice?: number; waypoints?: any[]; carryOnEstimateUSD?: number; checkedBagEstimateUSD?: number; argTaxEstimateUSD?: number } | null;
+        const combo = a.comboInfo as { legs?: any[]; totalPrice?: number; waypoints?: any[]; carryOnEstimateUSD?: number; checkedBagEstimateUSD?: number; groupTotalUSD?: number; groupTotalWithTaxUSD?: number; argTaxEstimateUSD?: number } | null;
         const isCombo = !!(combo && Array.isArray(combo.legs) && combo.legs.length > 0);
-        const displayPrice = isCombo
-          ? combo!.totalPrice
-          : Number(a.flightResult?.pricePerPerson);
-        const displayCurrency = isCombo
-          ? combo!.legs![0]?.currency ?? a.flightResult?.currency
-          : a.flightResult?.currency;
-        const carryOn = combo?.carryOnEstimateUSD;
-        const checkedBag = combo?.checkedBagEstimateUSD;
-        const argTotal = combo?.argTaxEstimateUSD;
-        const totalWithExtras = (Number(displayPrice ?? 0)) + (carryOn ?? 0) + (checkedBag ?? 0);
+        const groupTotal = combo?.groupTotalUSD;
+        const groupWithTax = combo?.groupTotalWithTaxUSD;
         return (
           <div key={a.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, marginBottom: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <AlertBadge level={a.level} />
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 500 }}>
-                    {displayCurrency} {Number(displayPrice ?? 0).toLocaleString()}
-                    {' '}/ persona
-                    {isCombo && (
-                      <span style={{
-                        marginLeft: 8, fontSize: 11, fontWeight: 600,
-                        background: '#eff6ff', color: '#1d4ed8',
-                        padding: '2px 8px', borderRadius: 10,
-                      }}>
-                        {combo!.legs!.length} tramos
-                      </span>
-                    )}
-                  </div>
-                  {isCombo && (carryOn !== undefined || checkedBag !== undefined || argTotal !== undefined) && (
-                    <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
-                      {(carryOn !== undefined && carryOn > 0) || (checkedBag !== undefined && checkedBag > 0) ? (
-                        <span style={{ marginRight: 10 }}>
-                          {carryOn !== undefined && carryOn > 0 && <>🧳 +USD {carryOn} carry-on </>}
-                          {checkedBag !== undefined && checkedBag > 0 && <>🧳 +USD {checkedBag} valija </>}
-                          (estimado) → <strong>USD {totalWithExtras.toLocaleString()}</strong>
+                  {isCombo && groupTotal !== undefined ? (
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
+                        USD {groupTotal.toLocaleString()}
+                        <span style={{ fontSize: 12, fontWeight: 400, color: '#6b7280', marginLeft: 6 }}>
+                          total (tickets + equipaje)
                         </span>
-                      ) : null}
-                      {argTotal !== undefined && (
-                        <span title="Estimación con Impuesto PAIS 30% + Percepción RG 5232 45% (residente AR pagando con tarjeta argentina, incluyendo equipaje)">
-                          🇦🇷 con impuestos AR: <strong>USD {argTotal.toLocaleString()}</strong>
-                        </span>
+                      </div>
+                      {groupWithTax !== undefined && (
+                        <div style={{ fontSize: 13, color: '#475569', marginTop: 2 }}>
+                          🇦🇷 USD {groupWithTax.toLocaleString()} con impuestos AR
+                          <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 4 }}>(PAIS + RG 5232)</span>
+                        </div>
                       )}
                     </div>
+                  ) : (
+                    <div style={{ fontSize: 14, fontWeight: 500 }}>
+                      USD {Number(a.flightResult?.pricePerPerson ?? 0).toLocaleString()} / persona
+                    </div>
+                  )}
+                  {isCombo && (
+                    <span style={{
+                      display: 'inline-block', marginTop: 4, fontSize: 11, fontWeight: 600,
+                      background: '#eff6ff', color: '#1d4ed8',
+                      padding: '2px 8px', borderRadius: 10,
+                    }}>
+                      {combo!.legs!.length} tramos
+                    </span>
                   )}
                   <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
                     Enviado: {new Date(a.sentAt).toLocaleString('es-CL')} · Canales: {a.channelsSent?.join(', ')}
@@ -441,16 +426,25 @@ export default function AlertsPage() {
                 marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9',
               }}>
                 <ComboTimeline legs={combo!.legs! as any} />
-                <div style={{
-                  marginTop: 12, paddingTop: 8, borderTop: '1px dashed #e5e7eb',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  fontSize: 13,
-                }}>
-                  <span style={{ color: '#6b7280' }}>Total del viaje (por persona)</span>
-                  <strong style={{ fontSize: 15, color: '#0f172a' }}>
-                    {displayCurrency} {Number(displayPrice ?? 0).toLocaleString()}
-                  </strong>
-                </div>
+                {groupTotal !== undefined && (
+                  <div style={{
+                    marginTop: 12, paddingTop: 8, borderTop: '1px dashed #e5e7eb',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    fontSize: 13,
+                  }}>
+                    <span style={{ color: '#6b7280' }}>Total del viaje (grupo, todo incluido)</span>
+                    <div style={{ textAlign: 'right' }}>
+                      <strong style={{ fontSize: 15, color: '#0f172a' }}>
+                        USD {groupTotal.toLocaleString()}
+                      </strong>
+                      {groupWithTax !== undefined && (
+                        <div style={{ fontSize: 12, color: '#475569' }}>
+                          🇦🇷 USD {groupWithTax.toLocaleString()} con impuestos
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>
                   Fuente: Google Flights · precio incluye impuestos y tasas aeroportuarias obligatorias
                 </div>
