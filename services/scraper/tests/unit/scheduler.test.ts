@@ -18,6 +18,9 @@ describe('Scheduler', () => {
       findMany: ReturnType<typeof vi.fn>;
       updateMany: ReturnType<typeof vi.fn>;
     };
+    flightResult: {
+      deleteMany: ReturnType<typeof vi.fn>;
+    };
   };
   let jobProcessor: { execute: ReturnType<typeof vi.fn> };
 
@@ -26,6 +29,9 @@ describe('Scheduler', () => {
       search: {
         findMany: vi.fn().mockResolvedValue([makeSearch()]),
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      flightResult: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
     };
     jobProcessor = {
@@ -122,9 +128,10 @@ describe('Scheduler', () => {
     it('calls tick repeatedly on the given interval', async () => {
       prisma.search.findMany.mockResolvedValue([]);
       const scheduler = new Scheduler(prisma as never, jobProcessor as never);
-      scheduler.start(5000);
+      await scheduler.start(5000);
 
-      // Advance clock by 3 intervals; start() also runs tick once immediately = 4 total
+      // start() already ran cleanStaleResults + tick (1 call).
+      // Advance clock by 3 intervals → 3 more ticks = 4 total
       await vi.advanceTimersByTimeAsync(15000);
 
       expect(prisma.search.findMany).toHaveBeenCalledTimes(4);
@@ -133,10 +140,9 @@ describe('Scheduler', () => {
     it('calls tick immediately on start', async () => {
       prisma.search.findMany.mockResolvedValue([]);
       const scheduler = new Scheduler(prisma as never, jobProcessor as never);
-      scheduler.start(5000);
+      await scheduler.start(5000);
 
-      // Allow microtask queue to flush so the immediate tick runs
-      await vi.advanceTimersByTimeAsync(0);
+      // start() is async and awaited, so the immediate tick has already run
       expect(prisma.search.findMany).toHaveBeenCalledTimes(1);
     });
   });
@@ -145,9 +151,9 @@ describe('Scheduler', () => {
     it('stops calling tick after stop() is called', async () => {
       prisma.search.findMany.mockResolvedValue([]);
       const scheduler = new Scheduler(prisma as never, jobProcessor as never);
-      scheduler.start(5000);
+      await scheduler.start(5000);
 
-      // Initial tick + one interval = 2 calls
+      // start() ran tick immediately (1 call). Advance 1 interval → 2nd call
       await vi.advanceTimersByTimeAsync(5000);
       expect(prisma.search.findMany).toHaveBeenCalledTimes(2);
 
@@ -166,7 +172,7 @@ describe('Scheduler', () => {
     it('calling stop twice does nothing', async () => {
       prisma.search.findMany.mockResolvedValue([]);
       const scheduler = new Scheduler(prisma as never, jobProcessor as never);
-      scheduler.start(5000);
+      await scheduler.start(5000);
       scheduler.stop();
       expect(() => scheduler.stop()).not.toThrow();
     });
