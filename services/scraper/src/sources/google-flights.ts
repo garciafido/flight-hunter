@@ -31,7 +31,7 @@ export class GoogleFlightsSource {
     arrivalTime?: string;    // "5:20 PM" (may be "5:20 PM+1" for next day)
     nextDay?: boolean;       // true if arrival is next day
   scrapedDuration?: number;  // minutes, extracted from "X hr Y min" text
-  }>> {
+  }>>; pageUrl: string }> {
     await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
 
     const proceed = page.getByText('Proceed anyway');
@@ -53,6 +53,10 @@ export class GoogleFlightsSource {
     } catch {
       // Tab not found or click failed — continue with whatever tab is active
     }
+
+    // Capture the actual page URL AFTER clicking Cheapest — it changes to
+    // a ?tfs= format that opens the exact same view when the user clicks it.
+    const pageUrl = page.url();
 
     /* v8 ignore start */
     const flights = await page.evaluate(() => {
@@ -133,9 +137,10 @@ export class GoogleFlightsSource {
         return undefined;
       }
 
-      // Regex to match Google Flights duration text like "8 hr 48 min", "18 hr 13 min"
-      // Flexible: anchored OR embedded (Google may append route info on same line)
-      const DURATION_RE = /(\d{1,2})\s*hr(?:\s+(\d{1,2})\s*min)?/i;
+      // Match total flight duration "9 hr 45 min" but NOT layover duration
+      // "3 hr 51 min SCL" (which has an airport code after it).
+      // The $ anchor ensures no trailing text like airport names.
+      const DURATION_RE = /^(\d{1,2})\s*hr(?:\s+(\d{1,2})\s*min)?$/i;
       const DURATION_MIN_ONLY = /^(\d{1,3})\s*min$/i;
 
       function parseDurationText(text: string): number | undefined {
@@ -201,7 +206,7 @@ export class GoogleFlightsSource {
     });
     /* v8 ignore stop */
 
-    return flights;
+    return { flights, pageUrl };
   }
 
   /**
@@ -295,7 +300,10 @@ export class GoogleFlightsSource {
         // TOTAL price for N adults → we divide by N to get per-person.
         const url = this.buildBookingUrl(leg.origin, leg.destination, dep, legPax);
         try {
-          const flights = await this.scrapePage(page, url);
+          const { flights, pageUrl } = await this.scrapePage(page, url);
+          // pageUrl is the actual URL after clicking "Cheapest" tab — may differ
+          // from the constructed URL. This is what the user should click.
+          const bookingUrl = pageUrl || url;
           console.log(`      ${formatDate(dep)}: ${flights.length} flight(s)`);
 
           for (const f of flights) {
@@ -330,7 +338,7 @@ export class GoogleFlightsSource {
               // Google shows TOTAL for N adults. Divide by N for per-person.
               pricePer: 'total' as const,
               passengers: legPax,
-              bookingUrl: url,
+              bookingUrl,
               carryOnIncluded: true,
               scrapedAt: new Date(),
               proxyRegion,
