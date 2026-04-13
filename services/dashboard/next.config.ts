@@ -1,7 +1,8 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  output: 'standalone',
+  // standalone only in production — breaks dev mode in Next.js 15
+  ...(process.env.NODE_ENV === 'production' ? { output: 'standalone' } : {}),
   // Treat Prisma + pino as external on the server (don't bundle them).
   // The Next.js client compiler will then refuse to import them, which is
   // exactly what we want — they're server-only modules.
