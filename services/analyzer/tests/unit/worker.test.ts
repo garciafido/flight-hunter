@@ -64,7 +64,7 @@ function makeSearchRecord(alertConfig = {}, filters = {}) {
     },
     alertConfig: {
       scoreThresholds: { info: 50, good: 70, urgent: 85 },
-      maxPricePerPerson: 1500,
+      maxPrice: 1500,
       currency: 'USD',
       ...alertConfig,
     },
@@ -146,7 +146,7 @@ describe('AnalyzerWorker', () => {
     const deps = makeDeps(
       makeSearchRecord({
         scoreThresholds: { info: 10, good: 20, urgent: 30 },
-        maxPricePerPerson: 1500,
+        maxPrice: 1500,
       }),
     );
     const worker = new AnalyzerWorker(deps);
@@ -234,7 +234,7 @@ describe('AnalyzerWorker waypoint sequence evaluation', () => {
       },
       alertConfig: {
         scoreThresholds: { info: 50, good: 70, urgent: 85 },
-        maxPricePerPerson: 2000,
+        maxPrice: 2000,
         currency: 'USD',
       },
       stopover: null,
@@ -375,7 +375,7 @@ describe('AnalyzerWorker waypoint sequence evaluation', () => {
     const searchRecord = makeWaypointSearchRecord(100);
     // Low thresholds so any non-zero score triggers an alert
     searchRecord.alertConfig.scoreThresholds = { info: 1, good: 2, urgent: 3 };
-    searchRecord.alertConfig.maxPricePerPerson = 5000;
+    searchRecord.alertConfig.maxPrice = 5000;
 
     const allRows = [
       makeFlightResultRow('BUE', 'LIM', 200, '2026-07-01T10:00:00.000Z', 'r-bue-lim'),
@@ -433,7 +433,7 @@ describe('AnalyzerWorker waypoint sequence evaluation', () => {
       },
       alertConfig: {
         scoreThresholds: { info: 50, good: 70, urgent: 85 },
-        maxPricePerPerson: 1500,
+        maxPrice: 1500,
         currency: 'USD',
       },
       stopover: null,

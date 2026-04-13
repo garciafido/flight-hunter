@@ -19,7 +19,7 @@ function fillBasics() {
   fireEvent.change(getInputByName('origin'), { target: { name: 'origin', value: 'BUE' } });
   fireEvent.change(getInputByName('departureFrom'), { target: { name: 'departureFrom', value: '2026-07-25' } });
   fireEvent.change(getInputByName('departureTo'), { target: { name: 'departureTo', value: '2026-07-31' } });
-  fireEvent.change(getInputByName('maxPricePerPerson'), { target: { name: 'maxPricePerPerson', value: '1000' } });
+  fireEvent.change(getInputByName('maxPrice'), { target: { name: 'maxPrice', value: '1000' } });
 }
 
 function fillFirstWaypoint(airport: string) {

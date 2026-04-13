@@ -4,7 +4,7 @@ import type { SearchAlertConfig } from '@flight-hunter/shared';
 
 const baseConfig: SearchAlertConfig = {
   scoreThresholds: { info: 50, good: 70, urgent: 85 },
-  maxPricePerPerson: 1000,
+  maxPrice: 1000,
   currency: 'USD',
 };
 
@@ -46,8 +46,8 @@ describe('DealDetector', () => {
   describe('price targets', () => {
     const configWithTargets: SearchAlertConfig = {
       ...baseConfig,
-      targetPricePerPerson: 600,
-      dreamPricePerPerson: 400,
+      targetPrice: 600,
+      dreamPrice: 400,
     };
 
     it('returns good when price is at or below target', () => {
@@ -121,13 +121,13 @@ describe('DealDetector', () => {
     });
 
     it('returns urgent when price triggers good but dream price met', () => {
-      const config = { ...baseConfig, targetPricePerPerson: 600, dreamPricePerPerson: 400 };
+      const config = { ...baseConfig, targetPrice: 600, dreamPrice: 400 };
       const level = detector.detect(70, 400, config);
       expect(level).toBe('urgent');
     });
 
     it('combines score and price triggers taking highest', () => {
-      const config = { ...baseConfig, targetPricePerPerson: 600 };
+      const config = { ...baseConfig, targetPrice: 600 };
       // score=50 (info), price at target (good) → good
       const level = detector.detect(50, 600, config);
       expect(level).toBe('good');
