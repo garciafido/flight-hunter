@@ -2,7 +2,8 @@
   "name": "flight-hunter",
   "private": true,
   "scripts": {
-    "dev": "turbo dev",
+    "clean": "rm -rf services/dashboard/.next node_modules/.cache .turbo services/*/.turbo",
+    "dev": "pnpm clean && turbo dev",
     "build": "turbo build",
     "test": "turbo test",
     "test:coverage": "turbo test:coverage",
