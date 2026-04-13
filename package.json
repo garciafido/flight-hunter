@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "clean": "rm -rf services/dashboard/.next node_modules/.cache .turbo services/*/.turbo && pnpm --filter @flight-hunter/shared build",
-    "kill": "pkill -9 -f 'chrome-headless-shell' 2>/dev/null; pkill -f 'tsx watch' 2>/dev/null; pkill -f 'tsc --watch' 2>/dev/null; lsof -ti :3000 | xargs kill -9 2>/dev/null; lsof -ti :8080 | xargs kill -9 2>/dev/null; echo 'All processes killed'",
+    "kill": "pkill -9 -f 'flight-hunter.*chrome-headless-shell' 2>/dev/null; pkill -f 'flight-hunter.*tsx.*watch' 2>/dev/null; pkill -f 'flight-hunter.*tsc.*watch' 2>/dev/null; echo 'Killed flight-hunter zombie processes'",
     "dev": "pnpm kill; pnpm clean && turbo dev",
     "build": "turbo build",
     "test": "turbo test",
