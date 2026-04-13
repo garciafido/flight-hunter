@@ -41,6 +41,7 @@ export interface FormState {
   requireCarryOn: boolean;
   maxUnplannedStops: number;
   airlineBlacklist: string;     // comma-separated, parsed to string[] on submit
+  airlinePreferred: string;     // comma-separated, parsed to string[] on submit
   // Checked bags on the final return leg (per passenger).
   returnCheckedBags: number;
   // Override passenger count for the return leg. '' = inherit global.
@@ -110,6 +111,7 @@ export function searchRowToFormState(row: any): FormState {
     requireCarryOn: filters.requireCarryOn ?? false,
     maxUnplannedStops: filters.maxUnplannedStops ?? 1,
     airlineBlacklist: Array.isArray(filters.airlineBlacklist) ? filters.airlineBlacklist.join(', ') : '',
+    airlinePreferred: Array.isArray(filters.airlinePreferred) ? filters.airlinePreferred.join(', ') : '',
     returnCheckedBags: row.returnCheckedBags ?? 0,
     returnPassengers: row.returnPassengers ?? '',
     scoreThresholdInfo: alertConfig.scoreThresholds?.info ?? 30,
@@ -139,6 +141,7 @@ const DEFAULT_FORM_STATE: FormState = {
   requireCarryOn: false,
   maxUnplannedStops: 1,
   airlineBlacklist: '',
+  airlinePreferred: '',
   returnCheckedBags: 0,
   returnPassengers: '',
   scoreThresholdInfo: 30,
@@ -242,10 +245,14 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
         .split(',')
         .map(s => s.trim())
         .filter(Boolean);
+      const airlinePreferred = form.airlinePreferred
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
 
       const filters = {
         airlineBlacklist,
-        airlinePreferred: [],
+        airlinePreferred,
         airportPreferred: {},
         airportBlacklist: {},
         maxUnplannedStops: Number(form.maxUnplannedStops),
@@ -703,13 +710,26 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
         </div>
 
         <div style={{ marginBottom: 12 }}>
+          <label style={labelStyle}>Aerolíneas preferidas (separadas por coma)</label>
+          <input
+            name="airlinePreferred"
+            data-testid="filter-preferred"
+            value={form.airlinePreferred}
+            onChange={handleChange}
+            placeholder="ej. LATAM, Sky Airline"
+            style={inputStyle}
+          />
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>Reciben bonus en el score — rankean más alto sin excluir las demás</span>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
           <label style={labelStyle}>Aerolíneas a bloquear (separadas por coma)</label>
           <input
             name="airlineBlacklist"
             data-testid="filter-blacklist"
             value={form.airlineBlacklist}
             onChange={handleChange}
-            placeholder="ej. JetSMART, Sky Airline"
+            placeholder="ej. Spirit, Frontier"
             style={inputStyle}
           />
         </div>
