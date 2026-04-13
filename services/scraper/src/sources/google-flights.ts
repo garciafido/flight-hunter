@@ -55,6 +55,12 @@ export class GoogleFlightsSource {
         '[role="tab"]:has-text("Cheapest")',
         'text=Cheapest',
       ];
+      // Capture a price BEFORE clicking to detect when results update
+      const priceBefore = await page.evaluate(() => {
+        const m = document.body.innerText.match(/\$(\d{1,3}(?:,\d{3})*)/);
+        return m ? m[0] : null;
+      }).catch(() => null);
+
       let clicked = false;
       for (const sel of selectors) {
         const tab = page.locator(sel).first();
@@ -65,9 +71,17 @@ export class GoogleFlightsSource {
         }
       }
       if (clicked) {
-        // Wait for the results to refresh after tab switch
+        // Wait for results to refresh — poll until a price changes or timeout
         await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-        await page.waitForTimeout(3000);
+        // Extra wait: Google animates the tab switch and re-renders results
+        for (let attempt = 0; attempt < 5; attempt++) {
+          await page.waitForTimeout(1500);
+          const priceAfter = await page.evaluate(() => {
+            const m = document.body.innerText.match(/\$(\d{1,3}(?:,\d{3})*)/);
+            return m ? m[0] : null;
+          }).catch(() => null);
+          if (priceAfter && priceAfter !== priceBefore) break;
+        }
       }
     } catch {
       // Tab not found or click failed — continue with whatever tab is active
