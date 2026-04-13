@@ -48,13 +48,24 @@ export class SearchJobProcessor {
     // Compute per-pair date windows by walking each sequence and accumulating
     // the min/max days of preceding waypoint gaps. A pair that appears in
     // multiple sequences gets the union (earliest start, latest end).
-    const pairWindows = new Map<string, { origin: string; destination: string; from: Date; to: Date }>();
+    // Build per-arrival-airport passenger map from waypoints + returnPassengers.
+    const paxByArrival: Record<string, number> = {};
+    for (const wp of config.waypoints) {
+      if (wp.passengers && wp.passengers > 0) {
+        paxByArrival[wp.airport] = wp.passengers;
+      }
+    }
+    const returnPax = (config as any).returnPassengers ?? config.passengers;
+
+    const pairWindows = new Map<string, { origin: string; destination: string; from: Date; to: Date; passengers: number }>();
     for (const seq of sequences) {
       let cumMin = 0;
       let cumMax = 0;
       for (let i = 0; i < seq.legs.length; i++) {
         const leg = seq.legs[i];
         const key = `${leg.origin}→${leg.destination}`;
+        const isReturn = leg.destination === config.origin;
+        const legPax = isReturn ? returnPax : (paxByArrival[leg.destination] ?? config.passengers);
         const legFrom = new Date(baseFrom);
         legFrom.setUTCDate(legFrom.getUTCDate() + cumMin);
         const legTo = new Date(baseTo);
@@ -64,7 +75,7 @@ export class SearchJobProcessor {
           if (legFrom < existing.from) existing.from = legFrom;
           if (legTo > existing.to) existing.to = legTo;
         } else {
-          pairWindows.set(key, { origin: leg.origin, destination: leg.destination, from: legFrom, to: legTo });
+          pairWindows.set(key, { origin: leg.origin, destination: leg.destination, from: legFrom, to: legTo, passengers: legPax });
         }
         // Accumulate the gap that follows this leg (i.e. the i-th gap), if any
         const gap = seq.gapConstraints[i];
@@ -98,11 +109,12 @@ export class SearchJobProcessor {
       const proxyUrl = await this.vpnRouter.getProxyUrl(region);
       for (const source of oneWaySources) {
         for (const pair of uniquePairs) {
-          const leg: SearchLegInput = {
+          const leg: SearchLegInput & { passengers?: number } = {
             origin: pair.origin,
             destination: pair.destination,
             departureFrom: pair.from,
             departureTo: pair.to,
+            passengers: pair.passengers,
           };
           console.log(
             `  Source ${source.name} waypoint pair (${pair.origin}→${pair.destination}, region: ${region})...`,

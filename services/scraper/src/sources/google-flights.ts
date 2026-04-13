@@ -312,8 +312,9 @@ export class GoogleFlightsSource implements FlightSource {
     return links;
   }
 
-  buildOneWayUrl(origin: string, destination: string, depDate: Date): string {
-    return `https://www.google.com/travel/flights?q=One+way+flight+from+${origin}+to+${destination}+on+${formatDate(depDate)}&curr=USD&hl=en`;
+  buildOneWayUrl(origin: string, destination: string, depDate: Date, passengers = 1): string {
+    const paxStr = passengers > 1 ? `+for+${passengers}+adults` : '';
+    return `https://www.google.com/travel/flights?q=One+way+flight+from+${origin}+to+${destination}+on+${formatDate(depDate)}${paxStr}&curr=USD&hl=en`;
   }
 
   /**
@@ -339,7 +340,7 @@ export class GoogleFlightsSource implements FlightSource {
 
   async searchOneWay(
     config: SearchConfig,
-    leg: LegInput,
+    leg: LegInput & { passengers?: number },
     proxyUrl: string | null,
   ): Promise<FlightResult[]> {
     let browser;
@@ -363,7 +364,8 @@ export class GoogleFlightsSource implements FlightSource {
       const allResults: FlightResult[] = [];
 
       for (const dep of dates) {
-        const url = this.buildOneWayUrl(leg.origin, leg.destination, dep);
+        const legPax = leg.passengers ?? config.passengers;
+        const url = this.buildOneWayUrl(leg.origin, leg.destination, dep, legPax);
         try {
           const flights = await this.scrapePage(page, url);
           console.log(`      ${formatDate(dep)}: ${flights.length} flight(s)`);
@@ -406,10 +408,9 @@ export class GoogleFlightsSource implements FlightSource {
               },
               totalPrice: f.price,
               currency: 'USD',
-              // Google Flights listing shows per-person price (URL doesn't
-              // specify passenger count, defaults to 1 adult).
+              // Google Flights listing shows per-person price.
               pricePer: 'person' as const,
-              passengers: 1,
+              passengers: legPax,
               carryOnIncluded: true,
               bookingUrl: directLink ?? url,
               scrapedAt: new Date(),
