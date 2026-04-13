@@ -47,15 +47,10 @@ function formatDuration(minutes: number | undefined): string | null {
 }
 
 function flightDuration(leg: ComboLeg): string | null {
-  const fromMinutes = formatDuration(leg.durationMinutes);
-  if (fromMinutes) return fromMinutes;
-  // Fallback: derive from arrivalTime - departureTime if both are real
-  const dep = parseTime(leg.departureTime);
-  const arr = parseTime(leg.arrivalTime);
-  if (!dep?.hhmm || !arr?.hhmm) return null;
-  const diff = new Date(arr.iso).getTime() - new Date(dep.iso).getTime();
-  if (diff <= 0) return null;
-  return formatDuration(Math.round(diff / 60000));
+  // Only use the scraped duration (from Google Flights text "X hr Y min").
+  // NEVER compute from timestamps — they're wall-clock in different timezones
+  // so the diff gives wrong results (e.g., 16h instead of 7h for BUE→CUZ).
+  return formatDuration(leg.durationMinutes);
 }
 
 function stayDays(prevArrival: string | undefined, nextDeparture: string | undefined): number | null {

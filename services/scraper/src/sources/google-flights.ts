@@ -133,8 +133,9 @@ export class GoogleFlightsSource {
         return undefined;
       }
 
-      // Regex to match Google Flights duration text like "8 hr 48 min", "2 hr", "45 min"
-      const DURATION_RE = /^(\d{1,2})\s*hr(?:\s+(\d{1,2})\s*min)?$/i;
+      // Regex to match Google Flights duration text like "8 hr 48 min", "18 hr 13 min"
+      // Flexible: anchored OR embedded (Google may append route info on same line)
+      const DURATION_RE = /(\d{1,2})\s*hr(?:\s+(\d{1,2})\s*min)?/i;
       const DURATION_MIN_ONLY = /^(\d{1,3})\s*min$/i;
 
       function parseDurationText(text: string): number | undefined {

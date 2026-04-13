@@ -254,7 +254,7 @@ describe('ComboTimeline', () => {
     expect(link.getAttribute('href')).toBe('https://example.com/booking/abc');
   });
 
-  it('falls back to derived duration when durationMinutes is missing', () => {
+  it('shows no duration when durationMinutes is missing (never derives from timestamps)', () => {
     const legs: ComboLeg[] = [
       {
         airline: 'JetSMART',
@@ -264,11 +264,12 @@ describe('ComboTimeline', () => {
         arrivalAirport: 'LIM',
         departureTime: '2026-07-28T08:00:00.000Z',
         arrivalTime: '2026-07-28T11:30:00.000Z',
-        // durationMinutes intentionally omitted
+        // durationMinutes intentionally omitted — should NOT compute from timestamps
       },
     ];
     const { container } = render(<ComboTimeline legs={legs} />);
-    expect(container.textContent).toContain('3h 30m');
+    // No duration derived from timestamps (cross-timezone would be wrong)
+    expect(container.textContent).not.toContain('3h 30m');
   });
 
   it('omits flight duration when both times are midnight UTC', () => {
