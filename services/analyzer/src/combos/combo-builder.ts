@@ -139,12 +139,16 @@ export function scoreCombo(
     return sum + ppp;
   }, 0);
 
-  const maxPrice = search.alertConfig.maxPrice ?? search.alertConfig.maxPricePerPerson ?? 2000;
+  // maxPrice is total-trip (group). Divide by passengers to compare per-person
+  // against per-person combo price for consistent scoring.
+  const maxPriceTotal = search.alertConfig.maxPrice ?? search.alertConfig.maxPricePerPerson ?? 2000;
+  const pax = search.passengers ?? 1;
+  const maxPricePerPerson = maxPriceTotal / pax;
 
   // Price score: 0 if above max, scales to 100 as price approaches 0
-  const priceScore = totalPrice >= maxPrice
+  const priceScore = totalPrice >= maxPricePerPerson
     ? 0
-    : Math.max(0, Math.round(100 * (1 - totalPrice / maxPrice)));
+    : Math.max(0, Math.round(100 * (1 - totalPrice / maxPricePerPerson)));
 
   // For schedule/stopover/airline: average the per-leg raw scores (50 each as neutral baseline)
   // In reality these would come from scored FlightResult rows; we use 50 as a neutral default
