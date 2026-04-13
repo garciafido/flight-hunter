@@ -408,8 +408,10 @@ export class GoogleFlightsSource implements FlightSource {
               },
               totalPrice: f.price,
               currency: 'USD',
-              // Google Flights listing shows per-person price.
-              pricePer: 'person' as const,
+              // Google Flights shows the TOTAL price for the number of passengers
+              // in the URL. With "+for+2+adults" the price is for 2 pax.
+              // With 1 pax (default) the price equals per-person.
+              pricePer: 'total' as const,
               passengers: legPax,
               carryOnIncluded: true,
               bookingUrl: directLink ?? url,

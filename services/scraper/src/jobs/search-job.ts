@@ -98,6 +98,7 @@ export class SearchJobProcessor {
       }
     }
     const uniquePairs = Array.from(pairWindows.values());
+    console.log(`  Waypoint dispatcher: ${sequences.length} sequence(s), ${uniquePairs.length} unique pair(s): ${uniquePairs.map(p => `${p.origin}→${p.destination}`).join(', ')}`);
 
     const regions = config.proxyRegions.length > 0 ? config.proxyRegions : ['default'];
     const oneWaySources = this.sources.filter(
