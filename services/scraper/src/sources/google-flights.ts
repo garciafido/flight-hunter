@@ -368,11 +368,14 @@ export class GoogleFlightsSource implements FlightSource {
           const flights = await this.scrapePage(page, url);
           console.log(`      ${formatDate(dep)}: ${flights.length} flight(s)`);
 
-          // Best-effort: extract direct booking links for the cheapest flights
-          const bookingLinks = await this.extractBookingLinks(page, flights);
+          // Direct booking link extraction is disabled for now — the DOM
+          // selectors don't match the current Google Flights structure and the
+          // click-based approach was leaving zombie Chromium processes when
+          // timeouts occurred. Re-enable after debugging with real DOM.
+          // const bookingLinks = await this.extractBookingLinks(page, flights);
 
           for (const f of flights) {
-            const directLink = bookingLinks.get(`${f.price}-${f.airline}`);
+            const directLink: string | undefined = undefined;
             const stopCount = /nonstop/i.test(f.stops) ? 0 : parseInt(f.stops, 10) || 1;
             const depIso = this.timeStringToIso(dep, f.departureTime, 0);
             const arrIso = this.timeStringToIso(dep, f.arrivalTime, f.nextDay ? 1 : 0);
