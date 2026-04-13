@@ -139,7 +139,7 @@ export function scoreCombo(
     return sum + ppp;
   }, 0);
 
-  const maxPrice = search.alertConfig.maxPricePerPerson;
+  const maxPrice = search.alertConfig.maxPrice ?? search.alertConfig.maxPricePerPerson ?? 2000;
 
   // Price score: 0 if above max, scales to 100 as price approaches 0
   const priceScore = totalPrice >= maxPrice

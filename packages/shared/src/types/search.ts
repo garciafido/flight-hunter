@@ -39,10 +39,17 @@ export interface SearchFilters {
 
 export interface SearchAlertConfig {
   scoreThresholds: { info: number; good: number; urgent: number };
-  maxPricePerPerson: number;
+  /** Maximum total trip price (group, all legs). Above this = no alert. */
+  maxPrice: number;
+  /** Target total trip price. At or below = "good" alert. */
+  targetPrice?: number;
+  /** Dream total trip price. At or below = "urgent" alert. */
+  dreamPrice?: number;
+  currency: string;
+  // Legacy per-person fields (kept for backwards compat with existing DB rows)
+  maxPricePerPerson?: number;
   targetPricePerPerson?: number;
   dreamPricePerPerson?: number;
-  currency: string;
 }
 
 export interface SearchConfig {

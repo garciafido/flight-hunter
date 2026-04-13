@@ -215,6 +215,7 @@ describe('AnalyzerWorker waypoint sequence evaluation', () => {
       id: 'search-1',
       name: 'BUE-LIM-CUZ Waypoint',
       origin: 'BUE',
+      passengers: 2,
       waypoints: [
         { airport: 'LIM', gap: { type: 'stay', minDays: 3, maxDays: 4 } },
         { airport: 'CUZ', gap: { type: 'stay', minDays: 7, maxDays: 10 } },
@@ -375,7 +376,9 @@ describe('AnalyzerWorker waypoint sequence evaluation', () => {
     const searchRecord = makeWaypointSearchRecord(100);
     // Low thresholds so any non-zero score triggers an alert
     searchRecord.alertConfig.scoreThresholds = { info: 1, good: 2, urgent: 3 };
-    searchRecord.alertConfig.maxPrice = 5000;
+    // maxPrice is now TOTAL TRIP (group). With 2 pax × ~570 per person = ~1140.
+    // Set maxPrice high enough that it passes.
+    searchRecord.alertConfig.maxPrice = 10000;
 
     const allRows = [
       makeFlightResultRow('BUE', 'LIM', 200, '2026-07-01T10:00:00.000Z', 'r-bue-lim'),

@@ -81,9 +81,9 @@ export class AnalyzerWorker {
     const priceScore = computePriceScore(
       pricePerPerson,
       {
-        maxPricePerPerson: alertConfig.maxPricePerPerson,
-        targetPricePerPerson: alertConfig.targetPricePerPerson,
-        dreamPricePerPerson: alertConfig.dreamPricePerPerson,
+        maxPricePerPerson: alertConfig.maxPrice ?? alertConfig.maxPricePerPerson ?? 2000,
+        targetPricePerPerson: alertConfig.targetPrice ?? alertConfig.targetPricePerPerson,
+        dreamPricePerPerson: alertConfig.dreamPrice ?? alertConfig.dreamPricePerPerson,
       },
       history ?? undefined,
     );
@@ -244,14 +244,39 @@ export class AnalyzerWorker {
       };
     });
 
-    const totalPrice = best.combo.reduce((sum, r) => sum + r.totalPrice, 0);
+    const totalPricePerPerson = best.combo.reduce((sum, r) => sum + r.totalPrice, 0);
     const currency = best.combo[0].currency;
     const flightResultIds = best.combo.map((r: any) => r.id).filter(Boolean);
+
+    // Build per-arrival-airport maps from the waypoint config (used for both
+    // group total calculation and publishComboAlert).
+    const checkedBagsByArrival: Record<string, number> = {};
+    const passengersByArrival: Record<string, number> = {};
+    for (const wp of waypoints) {
+      if (wp.checkedBags && wp.checkedBags > 0) {
+        checkedBagsByArrival[wp.airport] = wp.checkedBags;
+      }
+      if (wp.passengers && wp.passengers > 0) {
+        passengersByArrival[wp.airport] = wp.passengers;
+      }
+    }
+
+    // Compute group total for deal detection (thresholds are now "total trip",
+    // not per-person). Each leg's price × that leg's passenger count.
+    const lastIdx = best.combo.length - 1;
+    const returnPax = (searchRecord as any).returnPassengers ?? searchConfig.passengers;
+    const groupTicketTotal = best.combo.reduce((sum, l, i) => {
+      const arrAirport = l.outbound.arrival.airport;
+      const legPax = i === lastIdx
+        ? returnPax
+        : (passengersByArrival[arrAirport] ?? searchConfig.passengers);
+      return sum + l.totalPrice * legPax;
+    }, 0);
 
     const alertConfig = searchConfig.alertConfig;
     const alertLevel = this.deps.dealDetector.detect(
       best.score,
-      totalPrice,
+      groupTicketTotal,
       alertConfig,
       undefined,
     );
@@ -261,7 +286,7 @@ export class AnalyzerWorker {
         data: {
           searchId,
           flightResultIds,
-          totalPrice,
+          totalPrice: totalPricePerPerson,
           currency,
           score: best.score,
           scoreBreakdown: best.breakdown as object,
@@ -275,23 +300,11 @@ export class AnalyzerWorker {
     const firstLegId = (best.combo[0] as any).id as string | undefined;
     if (alertLevel && firstLegId) {
       try {
-        // Build per-arrival-airport maps from the waypoint config.
-        const checkedBagsByArrival: Record<string, number> = {};
-        const passengersByArrival: Record<string, number> = {};
-        for (const wp of waypoints) {
-          if (wp.checkedBags && wp.checkedBags > 0) {
-            checkedBagsByArrival[wp.airport] = wp.checkedBags;
-          }
-          if (wp.passengers && wp.passengers > 0) {
-            passengersByArrival[wp.airport] = wp.passengers;
-          }
-        }
-
         await this.deps.publisher.publishComboAlert({
           searchId,
           flightResultId: firstLegId,
           legs: best.combo,
-          totalPricePerPerson: totalPrice,
+          totalPricePerPerson: totalPricePerPerson,
           score: best.score,
           scoreBreakdown: best.breakdown,
           alertLevel,

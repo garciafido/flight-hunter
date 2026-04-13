@@ -13,15 +13,40 @@ function maxLevel(a: AlertLevel | null, b: AlertLevel): AlertLevel {
   return LEVEL_ORDER[a] >= LEVEL_ORDER[b] ? a : b;
 }
 
+/**
+ * Resolves alert config prices — supports both new "total" fields and
+ * legacy "perPerson" fields for backwards compatibility with old DB rows.
+ */
+function resolveMaxPrice(config: SearchAlertConfig): number {
+  return config.maxPrice ?? config.maxPricePerPerson ?? Infinity;
+}
+function resolveTargetPrice(config: SearchAlertConfig): number | undefined {
+  return config.targetPrice ?? config.targetPricePerPerson;
+}
+function resolveDreamPrice(config: SearchAlertConfig): number | undefined {
+  return config.dreamPrice ?? config.dreamPricePerPerson;
+}
+
 export class DealDetector {
+  /**
+   * Detect deal level based on the TOTAL TRIP PRICE (group, all legs, all pax).
+   * @param score — combo quality score (0-100)
+   * @param totalPrice — group total price (tickets + baggage)
+   * @param config — alert thresholds from search config
+   * @param history — optional price history for trend detection
+   */
   detect(
     score: number,
-    pricePerPerson: number,
+    totalPrice: number,
     config: SearchAlertConfig,
     history?: PriceHistory,
   ): AlertLevel | null {
-    // Price ≥ max → null (always)
-    if (pricePerPerson >= config.maxPricePerPerson) return null;
+    const maxPrice = resolveMaxPrice(config);
+    const targetPrice = resolveTargetPrice(config);
+    const dreamPrice = resolveDreamPrice(config);
+
+    // Price ≥ max → no alert
+    if (totalPrice >= maxPrice) return null;
 
     let level: AlertLevel | null = null;
 
@@ -34,28 +59,23 @@ export class DealDetector {
       level = maxLevel(level, 'info');
     }
 
-    // Price targets
-    if (config.dreamPricePerPerson !== undefined && pricePerPerson <= config.dreamPricePerPerson) {
+    // Price targets (total, not per-person)
+    if (dreamPrice !== undefined && totalPrice <= dreamPrice) {
       level = maxLevel(level, 'urgent');
-    } else if (
-      config.targetPricePerPerson !== undefined &&
-      pricePerPerson <= config.targetPricePerPerson
-    ) {
+    } else if (targetPrice !== undefined && totalPrice <= targetPrice) {
       level = maxLevel(level, 'good');
     }
 
-    // History triggers
+    // History triggers (using total price for consistency)
     if (history !== undefined) {
       const { avg48h, minHistoric } = history;
 
-      // New historic min → urgent
-      if (pricePerPerson < minHistoric) {
+      if (totalPrice < minHistoric) {
         level = maxLevel(level, 'urgent');
       }
 
       if (avg48h > 0) {
-        const dropPercent = (avg48h - pricePerPerson) / avg48h;
-
+        const dropPercent = (avg48h - totalPrice) / avg48h;
         if (dropPercent > 0.25) {
           level = maxLevel(level, 'urgent');
         } else if (dropPercent > 0.15) {

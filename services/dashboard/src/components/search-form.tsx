@@ -49,9 +49,9 @@ export interface FormState {
   scoreThresholdInfo: number;
   scoreThresholdGood: number;
   scoreThresholdUrgent: number;
-  maxPricePerPerson: number | '';
-  targetPricePerPerson: number | '';
-  dreamPricePerPerson: number | '';
+  maxPrice: number | '';
+  targetPrice: number | '';
+  dreamPrice: number | '';
   currency: string;
   proxyRegions: string[];
   scanIntervalMin: number;
@@ -115,9 +115,9 @@ export function searchRowToFormState(row: any): FormState {
     scoreThresholdInfo: alertConfig.scoreThresholds?.info ?? 30,
     scoreThresholdGood: alertConfig.scoreThresholds?.good ?? 60,
     scoreThresholdUrgent: alertConfig.scoreThresholds?.urgent ?? 80,
-    maxPricePerPerson: alertConfig.maxPricePerPerson ?? '',
-    targetPricePerPerson: alertConfig.targetPricePerPerson ?? '',
-    dreamPricePerPerson: alertConfig.dreamPricePerPerson ?? '',
+    maxPrice: alertConfig.maxPrice ?? alertConfig.maxPricePerPerson ?? '',
+    targetPrice: alertConfig.targetPrice ?? alertConfig.targetPricePerPerson ?? '',
+    dreamPrice: alertConfig.dreamPrice ?? alertConfig.dreamPricePerPerson ?? '',
     currency: alertConfig.currency ?? 'USD',
     proxyRegions: Array.isArray(row.proxyRegions) ? row.proxyRegions : [],
     scanIntervalMin: row.scanIntervalMin ?? 60,
@@ -144,9 +144,9 @@ const DEFAULT_FORM_STATE: FormState = {
   scoreThresholdInfo: 30,
   scoreThresholdGood: 60,
   scoreThresholdUrgent: 80,
-  maxPricePerPerson: '',
-  targetPricePerPerson: '',
-  dreamPricePerPerson: '',
+  maxPrice: '',
+  targetPrice: '',
+  dreamPrice: '',
   currency: 'USD',
   proxyRegions: [],
   scanIntervalMin: 60,
@@ -300,9 +300,9 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
             good: Number(form.scoreThresholdGood),
             urgent: Number(form.scoreThresholdUrgent),
           },
-          maxPricePerPerson: Number(form.maxPricePerPerson),
-          ...(form.targetPricePerPerson !== '' ? { targetPricePerPerson: Number(form.targetPricePerPerson) } : {}),
-          ...(form.dreamPricePerPerson !== '' ? { dreamPricePerPerson: Number(form.dreamPricePerPerson) } : {}),
+          maxPrice: Number(form.maxPrice),
+          ...(form.targetPrice !== '' ? { targetPrice: Number(form.targetPrice) } : {}),
+          ...(form.dreamPrice !== '' ? { dreamPrice: Number(form.dreamPrice) } : {}),
           currency: form.currency,
         },
         proxyRegions: form.proxyRegions,
@@ -620,8 +620,8 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
 
         <div style={rowStyle}>
           <div>
-            <label style={labelStyle}>Precio máx / persona</label>
-            <input name="maxPricePerPerson" value={form.maxPricePerPerson} onChange={handleChange} type="number" min="0" required style={inputStyle} />
+            <label style={labelStyle}>Precio máx total viaje</label>
+            <input name="maxPrice" value={form.maxPrice} onChange={handleChange} type="number" min="0" required style={inputStyle} />
           </div>
           <div>
             <label style={labelStyle}>Moneda</label>
@@ -636,12 +636,12 @@ export function SearchForm({ searchId, initialState, onCreated, onUpdated }: Sea
 
         <div style={rowStyle}>
           <div>
-            <label style={labelStyle}>Precio objetivo / persona</label>
-            <input name="targetPricePerPerson" value={form.targetPricePerPerson} onChange={handleChange} type="number" min="0" style={inputStyle} />
+            <label style={labelStyle}>Precio objetivo total</label>
+            <input name="targetPrice" value={form.targetPrice} onChange={handleChange} type="number" min="0" style={inputStyle} />
           </div>
           <div>
-            <label style={labelStyle}>Precio soñado / persona</label>
-            <input name="dreamPricePerPerson" value={form.dreamPricePerPerson} onChange={handleChange} type="number" min="0" style={inputStyle} />
+            <label style={labelStyle}>Precio soñado total</label>
+            <input name="dreamPrice" value={form.dreamPrice} onChange={handleChange} type="number" min="0" style={inputStyle} />
           </div>
         </div>
 
