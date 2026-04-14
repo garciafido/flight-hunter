@@ -192,7 +192,7 @@ export class Publisher {
       combo: {
         legs: legs.map((l, i) => {
           const legPax = i === lastIdx
-            ? (returnPassengers ?? globalPassengers)
+            ? (returnPax)
             : (passengersByArrival[l.outbound.arrival.airport] ?? globalPassengers);
           return {
             price: l.totalPrice,
