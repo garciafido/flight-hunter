@@ -75,13 +75,27 @@ export class ComboEvaluator {
   ): Promise<void> {
     const legResultArrays: (FlightResult & { id: string })[][] = [];
     for (const legPair of sequence.legs) {
-      const matching = allRows
-        .filter((r: any) => {
-          const dep = r.outbound?.departure?.airport;
-          const arr = r.outbound?.arrival?.airport;
-          return dep === legPair.origin && arr === legPair.destination;
-        })
-        .slice(0, topN)
+      // Select the cheapest flight PER DATE to ensure date diversity.
+      // Without this, duplicates from multiple ticks fill the top-N with
+      // the same date, making gap constraints impossible to satisfy.
+      const filtered = allRows.filter((r: any) => {
+        const dep = r.outbound?.departure?.airport;
+        const arr = r.outbound?.arrival?.airport;
+        return dep === legPair.origin && arr === legPair.destination;
+      });
+      const bestByDate = new Map<string, typeof filtered[0]>();
+      for (const row of filtered) {
+        const date = (row.outbound?.departure?.time as string)?.slice(0, 10) ?? '';
+        const existing = bestByDate.get(date);
+        if (!existing || Number(row.pricePerPerson) < Number(existing.pricePerPerson)) {
+          bestByDate.set(date, row);
+        }
+      }
+      // Sort by price and take topN
+      const deduped = Array.from(bestByDate.values())
+        .sort((a, b) => Number(a.pricePerPerson) - Number(b.pricePerPerson))
+        .slice(0, topN);
+      const matching = deduped
         .map((row: any) => ({
           id: row.id,
           searchId: row.searchId,
