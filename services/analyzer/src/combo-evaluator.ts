@@ -101,12 +101,19 @@ export class ComboEvaluator {
       legResultArrays.push(matching);
     }
 
-    if (legResultArrays.some((arr) => arr.length === 0)) return;
+    const legCounts = legResultArrays.map((arr, i) => `${sequence.legs[i].origin}→${sequence.legs[i].destination}: ${arr.length}`);
+    console.log(`ComboEvaluator: leg results: ${legCounts.join(', ')}`);
+
+    if (legResultArrays.some((arr) => arr.length === 0)) {
+      console.warn(`ComboEvaluator: missing flights for at least one leg — skipping`);
+      return;
+    }
 
     const combos = buildCombos(legResultArrays, {
       topN,
       gapConstraints: sequence.gapConstraints,
     });
+    console.log(`ComboEvaluator: ${combos.length} valid combo(s) from ${legResultArrays.reduce((s, a) => s * a.length, 1)} permutations`);
     if (combos.length === 0) return;
 
     const scoredCombos = combos.map((combo) => ({
@@ -166,6 +173,9 @@ export class ComboEvaluator {
       alertConfig,
       undefined,
     );
+
+    const maxPrice = alertConfig.maxPrice ?? alertConfig.maxPricePerPerson ?? Infinity;
+    console.log(`ComboEvaluator: best combo score=${best.score}, perPerson=${totalPricePerPerson}, groupTotal=${groupTicketTotal}, maxPrice=${maxPrice}, alertLevel=${alertLevel}`);
 
     try {
       await (this.deps.prisma as any).flightCombo.create({

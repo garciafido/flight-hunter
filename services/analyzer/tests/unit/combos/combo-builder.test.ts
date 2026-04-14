@@ -153,39 +153,31 @@ describe('buildCombos', () => {
 });
 
 describe('topNPerLeg', () => {
-  it('returns at least 2', () => {
-    expect(topNPerLeg(4, 3)).toBeGreaterThanOrEqual(2);
-    expect(topNPerLeg(1, 5)).toBe(2);
+  it('returns at least 10 (minimum for date diversity)', () => {
+    expect(topNPerLeg(4, 3)).toBe(10);
+    expect(topNPerLeg(1, 5)).toBe(10);
+    expect(topNPerLeg(100, 5)).toBe(10);
   });
 
   it('computes correct N for 2 legs', () => {
-    // maxCombos=100, 2 legs → floor(100^(1/2))=10
+    // maxCombos=100, 2 legs → floor(100^(1/2))=10, min 10
     expect(topNPerLeg(100, 2)).toBe(10);
   });
 
-  it('computes correct N for 3 legs', () => {
-    // maxCombos=100, 3 legs → floor(100^(1/3))=4
-    expect(topNPerLeg(100, 3)).toBe(4);
-  });
-
-  it('computes correct N for 4 legs', () => {
-    // maxCombos=100, 4 legs → floor(100^(1/4))=3
-    expect(topNPerLeg(100, 4)).toBe(3);
-  });
-
-  it('computes correct N for 5 legs', () => {
-    // maxCombos=100, 5 legs → floor(100^(1/5))=2
-    expect(topNPerLeg(100, 5)).toBe(2);
+  it('uses computed value when above minimum', () => {
+    // maxCombos=10000, 2 legs → floor(10000^(1/2))=100
+    expect(topNPerLeg(10000, 2)).toBe(100);
   });
 
   it('handles legCount=0 safely', () => {
-    expect(topNPerLeg(100, 0)).toBe(2);
+    expect(topNPerLeg(100, 0)).toBe(10);
   });
 
   it('scales with larger maxCombos', () => {
-    // maxCombos=1000, 3 legs → floor(1000^(1/3)) = floor(9.999...) = 9 due to JS floating point
-    expect(topNPerLeg(1000, 3)).toBeGreaterThanOrEqual(9);
-    expect(topNPerLeg(1000, 3)).toBeLessThanOrEqual(10);
+    // maxCombos=1000, 3 legs → floor(1000^(1/3)) = 10, min 10
+    expect(topNPerLeg(1000, 3)).toBe(10);
+    // maxCombos=10000, 3 legs → floor(10000^(1/3)) = 21
+    expect(topNPerLeg(10000, 3)).toBe(21);
   });
 });
 
@@ -218,21 +210,20 @@ describe('buildCombos N-leg', () => {
     expect(combos[0]).toHaveLength(5);
   });
 
-  it('top-N truncation: 10 results per leg, maxCombos=100, 3 legs → topN=4 per leg', () => {
-    // With topNPerLeg(100, 3)=4, we need to pass topN=4 to buildCombos
+  it('top-N truncation: 15 results per leg, topN=10 → 10^3=1000 combos', () => {
     const topN = topNPerLeg(100, 3);
-    expect(topN).toBe(4);
+    expect(topN).toBe(10);
 
     const makeLeg = (departureTime: string) =>
-      Array.from({ length: 10 }, (_, i) => makeFlight({ departureTime, price: 100 + i }));
+      Array.from({ length: 15 }, (_, i) => makeFlight({ departureTime, price: 100 + i }));
 
     const leg0 = makeLeg('2026-07-01T10:00:00.000Z');
     const leg1 = makeLeg('2026-07-15T10:00:00.000Z');
     const leg2 = makeLeg('2026-08-01T10:00:00.000Z');
 
     const combos = buildCombos([leg0, leg1, leg2], topN);
-    // 4^3 = 64 combinations
-    expect(combos).toHaveLength(64);
+    // 10^3 = 1000 combinations
+    expect(combos).toHaveLength(1000);
   });
 
   it('rejects combos where any leg is out of temporal order in 4-leg scenario', () => {

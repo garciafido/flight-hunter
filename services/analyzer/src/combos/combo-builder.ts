@@ -16,8 +16,11 @@ export interface ComboScore {
  * Returns the largest N such that N^legCount <= maxCombos (min 2).
  */
 export function topNPerLeg(maxCombos: number, legCount: number): number {
-  if (legCount <= 0) return 2;
-  return Math.max(2, Math.floor(maxCombos ** (1 / legCount)));
+  if (legCount <= 0) return 10;
+  // Need enough flights per leg to span different dates so gap constraints
+  // can be satisfied. With 3 legs × top-4 = 64 combos but too few dates.
+  // Minimum 10 per leg ensures date diversity.
+  return Math.max(10, Math.floor(maxCombos ** (1 / legCount)));
 }
 
 /**
