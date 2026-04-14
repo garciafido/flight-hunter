@@ -42,12 +42,12 @@ export function formatTelegram(alert: AlertJob, searchName: string): string {
       if (leg.stopoverAirport !== undefined && leg.stopoverDurationDays !== undefined) {
         text += `  🏨 Stopover: ${leg.stopoverAirport} (${leg.stopoverDurationDays} días)\n`;
       }
-      text += `  🔗 [Reservar](${leg.bookingUrl})\n\n`;
+      text += `  🔗 [buscar en GF](${leg.bookingUrl})`;
+      if (leg.despegarUrl) {
+        text += ` · [buscar en Despegar](${leg.despegarUrl})`;
+      }
+      text += `\n\n`;
     });
-
-    if (combo.despegarUrl) {
-      text += `🔗 [Buscar en Despegar](${combo.despegarUrl})\n\n`;
-    }
     text += `📊 Desglose: precio=${scoreBreakdown.price} horario=${scoreBreakdown.schedule} stopover=${scoreBreakdown.stopover} aerolínea=${scoreBreakdown.airline} flex=${scoreBreakdown.flexibility}\n\n`;
     text += `_Fuente: Google Flights · incluye impuestos y tasas aeroportuarias_`;
     return text;

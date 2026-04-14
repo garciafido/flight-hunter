@@ -9,12 +9,12 @@ export interface ComboLeg {
   departureTime?: string;
   arrivalTime?: string;
   bookingUrl?: string;
+  despegarUrl?: string;
   durationMinutes?: number;
 }
 
 interface Props {
   legs: ComboLeg[];
-  despegarUrl?: string;
 }
 
 interface ParsedTime {
@@ -110,7 +110,7 @@ const dateTimeStyle: React.CSSProperties = {
   marginLeft: 8,
 };
 
-export function ComboTimeline({ legs, despegarUrl }: Props) {
+export function ComboTimeline({ legs }: Props) {
   if (!legs || legs.length === 0) return null;
 
   const rows: React.ReactNode[] = [];
@@ -151,28 +151,29 @@ export function ComboTimeline({ legs, despegarUrl }: Props) {
           {leg.bookingUrl && (
             <>
               {' · '}
-              {leg.bookingUrl.includes('/booking') || !leg.bookingUrl.includes('google.com/travel/flights?q=') ? (
-                <>
-                  <a
-                    href={leg.bookingUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: '#2563eb', textDecoration: 'underline', fontWeight: 600 }}
-                  >
-                    reservar
-                  </a>
-                </>
-              ) : (
-                <a
-                  href={leg.bookingUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: '#2563eb', textDecoration: 'underline' }}
-                  title={`Buscar en Google Flights: ${leg.airline ?? 'vuelo'} a las ${dep?.hhmm ?? ''}`}
-                >
-                  buscar en GF
-                </a>
-              )}
+              <a
+                href={leg.bookingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: '#2563eb', textDecoration: 'underline' }}
+                title={`Buscar en Google Flights: ${leg.airline ?? 'vuelo'} a las ${dep?.hhmm ?? ''}`}
+              >
+                GF
+              </a>
+            </>
+          )}
+          {leg.despegarUrl && (
+            <>
+              {' · '}
+              <a
+                href={leg.despegarUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: '#7c3aed', textDecoration: 'underline' }}
+                title="Buscar en Despegar.com"
+              >
+                Despegar
+              </a>
             </>
           )}
         </span>
@@ -218,21 +219,9 @@ export function ComboTimeline({ legs, despegarUrl }: Props) {
   return (
     <div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>{rows}</div>
-      {despegarUrl && (
-        <div style={{ marginTop: 8 }}>
-          <a
-            href={despegarUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: '#2563eb', textDecoration: 'underline', fontWeight: 600, fontSize: 13 }}
-          >
-            Buscar combo en Despegar.com
-          </a>
-        </div>
-      )}
       <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>
         {anyRealTime && <>Horarios en hora local de cada aeropuerto · </>}
-        Los links abren Google Flights en esa fecha — buscá el vuelo por aerolínea y horario
+        GF = Google Flights · Despegar = despegar.com.ar
       </div>
     </div>
   );

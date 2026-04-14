@@ -38,7 +38,7 @@ export function formatEmail(alert: AlertJob, searchName: string): EmailPayload {
         <tr><td style="padding:6px 10px;border-bottom:1px solid #eee;font-weight:bold;">Precio</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${currency} ${leg.price}/persona</td></tr>
         <tr><td style="padding:6px 10px;border-bottom:1px solid #eee;font-weight:bold;">Fecha</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${depDate}</td></tr>
         ${stopoverRow}
-        <tr><td style="padding:6px 10px;font-weight:bold;">Reservar</td><td style="padding:6px 10px;"><a href="${leg.bookingUrl}" style="color:#2563eb;">Ver vuelo</a></td></tr>
+        <tr><td style="padding:6px 10px;font-weight:bold;">Buscar</td><td style="padding:6px 10px;"><a href="${leg.bookingUrl}" style="color:#2563eb;">Google Flights</a>${leg.despegarUrl ? ` · <a href="${leg.despegarUrl}" style="color:#2563eb;">Despegar</a>` : ''}</td></tr>
       </table>`;
       })
       .join('');
@@ -63,7 +63,6 @@ export function formatEmail(alert: AlertJob, searchName: string): EmailPayload {
     ${combo.argTaxEstimateUSD !== undefined ? `<p style="font-size:13px;color:#475569;">🇦🇷 con impuestos AR (PAIS 30% + RG 5232 45%, incluye equipaje): <strong>USD ${combo.argTaxEstimateUSD.toLocaleString()}</strong></p>` : ''}
     <p>Score: ${score}/100</p>
     ${legsHtml}
-    ${combo.despegarUrl ? `<p style="margin-top:12px;"><a href="${combo.despegarUrl}" style="color:#2563eb;font-weight:600;">🔗 Buscar en Despegar.com</a></p>` : ''}
     <p class="breakdown">Desglose: precio=${scoreBreakdown.price} | horario=${scoreBreakdown.schedule} | stopover=${scoreBreakdown.stopover} | aerolínea=${scoreBreakdown.airline} | flex=${scoreBreakdown.flexibility}</p>
     <p style="font-size:11px;color:#94a3b8;font-style:italic;margin-top:16px;">Fuente: Google Flights · precio incluye impuestos y tasas aeroportuarias obligatorias</p>
   </div>

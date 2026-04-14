@@ -81,6 +81,8 @@ export const AlertJobSchema = z.object({
       carryOnEstimateUSD: z.number().optional(),
       // Checked-bag cost estimate (USD per pax) for the bags configured on this leg.
       checkedBagEstimateUSD: z.number().optional(),
+      // Despegar.com one-way search URL for this leg (origin/dest/date/pax).
+      despegarUrl: z.string().url().optional(),
     })),
     totalPrice: z.number(),
     waypoints: z.array(z.object({
@@ -102,8 +104,6 @@ export const AlertJobSchema = z.object({
     // Legacy per-person estimate (kept for backwards compat, may be misleading
     // when legs have different passenger counts).
     argTaxEstimateUSD: z.number().optional(),
-    // Despegar.com multidestino URL for the entire combo (all legs + dates + pax).
-    despegarUrl: z.string().url().optional(),
   }).optional(),
 });
 

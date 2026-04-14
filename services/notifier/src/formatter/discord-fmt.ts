@@ -38,11 +38,12 @@ export function formatDiscord(alert: AlertJob, searchName: string): { content: s
       const depDate = leg.departureTime.slice(0, 10);
       description += `**Tramo ${i + 1}:** ${leg.departureAirport} → ${leg.arrivalAirport}\n`;
       description += `${leg.airline} | ${currency} ${leg.price}/persona | ${depDate}\n`;
-      description += `[Reservar](${leg.bookingUrl})\n\n`;
+      description += `[Google Flights](${leg.bookingUrl})`;
+      if (leg.despegarUrl) {
+        description += ` · [Despegar](${leg.despegarUrl})`;
+      }
+      description += `\n\n`;
     });
-    if (combo.despegarUrl) {
-      description += `🔗 [Buscar en Despegar](${combo.despegarUrl})\n`;
-    }
     return {
       content: `${emoji} **${header}** — ${searchName}`,
       embeds: [{ title: `${header} — ${searchName}`, description, color }],
