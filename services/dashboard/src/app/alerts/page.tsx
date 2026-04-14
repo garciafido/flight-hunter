@@ -425,7 +425,7 @@ export default function AlertsPage() {
               <div style={{
                 marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9',
               }}>
-                <ComboTimeline legs={combo!.legs! as any} />
+                <ComboTimeline legs={combo!.legs! as any} despegarUrl={(combo as any)?.despegarUrl} />
                 {groupTotal !== undefined && (
                   <div style={{
                     marginTop: 12, paddingTop: 8, borderTop: '1px dashed #e5e7eb',

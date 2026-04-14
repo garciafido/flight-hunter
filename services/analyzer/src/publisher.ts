@@ -2,7 +2,7 @@ import type { Queue } from 'bullmq';
 import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { FlightResult, AlertLevel, ScoreBreakdown } from '@flight-hunter/shared';
 import type { AlertJob } from '@flight-hunter/shared';
-import { estimateCarryOnUSD, estimateCheckedBagUSD, estimateArgentineTotalUSD } from '@flight-hunter/shared';
+import { estimateCarryOnUSD, estimateCheckedBagUSD, estimateArgentineTotalUSD, buildDespegarUrl } from '@flight-hunter/shared';
 import { PriceAggregator } from './aggregation/price-aggregator.js';
 
 export interface PublishPayload {
@@ -209,6 +209,14 @@ export class Publisher {
         ...(checkedBagFieldOrUndefined !== undefined ? { checkedBagEstimateUSD: checkedBagFieldOrUndefined } : {}),
         groupTotalUSD: Math.round(groupTotalUSD),
         groupTotalWithTaxUSD: Math.round(groupTotalWithTaxUSD),
+        despegarUrl: buildDespegarUrl(
+          legs.map((l) => ({
+            departureAirport: l.outbound.departure.airport,
+            arrivalAirport: l.outbound.arrival.airport,
+            departureTime: l.outbound.departure.time,
+          })),
+          globalPassengers,
+        ),
       },
     };
 

@@ -63,6 +63,7 @@ export function formatEmail(alert: AlertJob, searchName: string): EmailPayload {
     ${combo.argTaxEstimateUSD !== undefined ? `<p style="font-size:13px;color:#475569;">🇦🇷 con impuestos AR (PAIS 30% + RG 5232 45%, incluye equipaje): <strong>USD ${combo.argTaxEstimateUSD.toLocaleString()}</strong></p>` : ''}
     <p>Score: ${score}/100</p>
     ${legsHtml}
+    ${combo.despegarUrl ? `<p style="margin-top:12px;"><a href="${combo.despegarUrl}" style="color:#2563eb;font-weight:600;">🔗 Buscar en Despegar.com</a></p>` : ''}
     <p class="breakdown">Desglose: precio=${scoreBreakdown.price} | horario=${scoreBreakdown.schedule} | stopover=${scoreBreakdown.stopover} | aerolínea=${scoreBreakdown.airline} | flex=${scoreBreakdown.flexibility}</p>
     <p style="font-size:11px;color:#94a3b8;font-style:italic;margin-top:16px;">Fuente: Google Flights · precio incluye impuestos y tasas aeroportuarias obligatorias</p>
   </div>

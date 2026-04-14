@@ -14,6 +14,7 @@ export interface ComboLeg {
 
 interface Props {
   legs: ComboLeg[];
+  despegarUrl?: string;
 }
 
 interface ParsedTime {
@@ -109,7 +110,7 @@ const dateTimeStyle: React.CSSProperties = {
   marginLeft: 8,
 };
 
-export function ComboTimeline({ legs }: Props) {
+export function ComboTimeline({ legs, despegarUrl }: Props) {
   if (!legs || legs.length === 0) return null;
 
   const rows: React.ReactNode[] = [];
@@ -217,6 +218,18 @@ export function ComboTimeline({ legs }: Props) {
   return (
     <div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>{rows}</div>
+      {despegarUrl && (
+        <div style={{ marginTop: 8 }}>
+          <a
+            href={despegarUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#2563eb', textDecoration: 'underline', fontWeight: 600, fontSize: 13 }}
+          >
+            Buscar combo en Despegar.com
+          </a>
+        </div>
+      )}
       <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>
         {anyRealTime && <>Horarios en hora local de cada aeropuerto · </>}
         Los links abren Google Flights en esa fecha — buscá el vuelo por aerolínea y horario

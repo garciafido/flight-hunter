@@ -102,6 +102,8 @@ export const AlertJobSchema = z.object({
     // Legacy per-person estimate (kept for backwards compat, may be misleading
     // when legs have different passenger counts).
     argTaxEstimateUSD: z.number().optional(),
+    // Despegar.com multidestino URL for the entire combo (all legs + dates + pax).
+    despegarUrl: z.string().url().optional(),
   }).optional(),
 });
 

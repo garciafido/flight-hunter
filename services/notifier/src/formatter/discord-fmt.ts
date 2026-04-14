@@ -40,6 +40,9 @@ export function formatDiscord(alert: AlertJob, searchName: string): { content: s
       description += `${leg.airline} | ${currency} ${leg.price}/persona | ${depDate}\n`;
       description += `[Reservar](${leg.bookingUrl})\n\n`;
     });
+    if (combo.despegarUrl) {
+      description += `🔗 [Buscar en Despegar](${combo.despegarUrl})\n`;
+    }
     return {
       content: `${emoji} **${header}** — ${searchName}`,
       embeds: [{ title: `${header} — ${searchName}`, description, color }],
