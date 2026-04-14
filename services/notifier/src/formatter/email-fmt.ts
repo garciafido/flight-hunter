@@ -38,7 +38,7 @@ export function formatEmail(alert: AlertJob, searchName: string): EmailPayload {
         <tr><td style="padding:6px 10px;border-bottom:1px solid #eee;font-weight:bold;">Precio</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${currency} ${leg.price}/persona</td></tr>
         <tr><td style="padding:6px 10px;border-bottom:1px solid #eee;font-weight:bold;">Fecha</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${depDate}</td></tr>
         ${stopoverRow}
-        <tr><td style="padding:6px 10px;font-weight:bold;">Buscar</td><td style="padding:6px 10px;"><a href="${leg.bookingUrl}" style="color:#2563eb;">Google Flights</a>${leg.despegarUrl ? ` · <a href="${leg.despegarUrl}" style="color:#2563eb;">Despegar</a>` : ''}</td></tr>
+        <tr><td style="padding:6px 10px;font-weight:bold;">Reservar</td><td style="padding:6px 10px;"><a href="${leg.bookingUrl}" style="color:#2563eb;">Ver vuelo</a></td></tr>
       </table>`;
       })
       .join('');

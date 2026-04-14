@@ -9,7 +9,6 @@ export interface ComboLeg {
   departureTime?: string;
   arrivalTime?: string;
   bookingUrl?: string;
-  despegarUrl?: string;
   durationMinutes?: number;
 }
 
@@ -158,21 +157,7 @@ export function ComboTimeline({ legs }: Props) {
                 style={{ color: '#2563eb', textDecoration: 'underline' }}
                 title={`Buscar en Google Flights: ${leg.airline ?? 'vuelo'} a las ${dep?.hhmm ?? ''}`}
               >
-                GF
-              </a>
-            </>
-          )}
-          {leg.despegarUrl && (
-            <>
-              {' · '}
-              <a
-                href={leg.despegarUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: '#7c3aed', textDecoration: 'underline' }}
-                title="Buscar en Despegar.com"
-              >
-                Despegar
+                buscar en GF
               </a>
             </>
           )}
@@ -221,7 +206,7 @@ export function ComboTimeline({ legs }: Props) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>{rows}</div>
       <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>
         {anyRealTime && <>Horarios en hora local de cada aeropuerto · </>}
-        GF = Google Flights · Despegar = despegar.com.ar
+        Los links abren Google Flights en esa fecha — buscá el vuelo por aerolínea y horario
       </div>
     </div>
   );

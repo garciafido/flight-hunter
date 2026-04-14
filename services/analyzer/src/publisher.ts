@@ -2,7 +2,7 @@ import type { Queue } from 'bullmq';
 import type { PrismaClient } from '@flight-hunter/shared/db';
 import type { FlightResult, AlertLevel, ScoreBreakdown } from '@flight-hunter/shared';
 import type { AlertJob } from '@flight-hunter/shared';
-import { estimateCarryOnUSD, estimateCheckedBagUSD, estimateArgentineTotalUSD, buildDespegarLegUrl } from '@flight-hunter/shared';
+import { estimateCarryOnUSD, estimateCheckedBagUSD, estimateArgentineTotalUSD } from '@flight-hunter/shared';
 import { PriceAggregator } from './aggregation/price-aggregator.js';
 
 export interface PublishPayload {
@@ -190,30 +190,19 @@ export class Publisher {
         bookingUrl: firstLeg.bookingUrl,
       },
       combo: {
-        legs: legs.map((l, i) => {
-          const legPax = i === lastIdx
-            ? (returnPax)
-            : (passengersByArrival[l.outbound.arrival.airport] ?? globalPassengers);
-          return {
-            price: l.totalPrice,
-            currency: l.currency,
-            airline: l.outbound.airline,
-            departureAirport: l.outbound.departure.airport,
-            arrivalAirport: l.outbound.arrival.airport,
-            departureTime: l.outbound.departure.time,
-            arrivalTime: l.outbound.arrival.time,
-            bookingUrl: l.bookingUrl,
-            durationMinutes: l.outbound.durationMinutes,
-            despegarUrl: buildDespegarLegUrl(
-              l.outbound.departure.airport,
-              l.outbound.arrival.airport,
-              l.outbound.departure.time,
-              legPax,
-            ),
-            ...(perLegCarryOn !== undefined ? { carryOnEstimateUSD: perLegCarryOn[i] } : {}),
-            ...(perLegCheckedBag[i] > 0 ? { checkedBagEstimateUSD: perLegCheckedBag[i] } : {}),
-          };
-        }),
+        legs: legs.map((l, i) => ({
+          price: l.totalPrice,
+          currency: l.currency,
+          airline: l.outbound.airline,
+          departureAirport: l.outbound.departure.airport,
+          arrivalAirport: l.outbound.arrival.airport,
+          departureTime: l.outbound.departure.time,
+          arrivalTime: l.outbound.arrival.time,
+          bookingUrl: l.bookingUrl,
+          durationMinutes: l.outbound.durationMinutes,
+          ...(perLegCarryOn !== undefined ? { carryOnEstimateUSD: perLegCarryOn[i] } : {}),
+          ...(perLegCheckedBag[i] > 0 ? { checkedBagEstimateUSD: perLegCheckedBag[i] } : {}),
+        })),
         totalPrice: totalPricePerPerson,
         ...(waypoints ? { waypoints } : {}),
         ...(totalCarryOn !== undefined ? { carryOnEstimateUSD: totalCarryOn } : {}),
