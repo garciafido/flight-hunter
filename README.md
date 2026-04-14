@@ -379,6 +379,33 @@ Cada alerta incluye:
 
 ---
 
+## Algoritmo de armado de combos
+
+El sistema busca la **mejor combinación de vuelos** (uno por tramo del itinerario) mediante un enfoque de **fuerza bruta con poda**:
+
+1. **Selección por tramo**: para cada par origen→destino, se toma el vuelo más barato **por fecha** (dedup por día). Esto garantiza diversidad de fechas para que las restricciones de estadía puedan cumplirse.
+
+2. **Producto cartesiano con poda**: se generan todas las combinaciones posibles entre tramos, descartando en el acto las que no cumplen:
+   - **Orden temporal estricto**: cada vuelo debe salir después del anterior
+   - **Gap constraints**: la estadía en cada destino (noches entre llegada y siguiente salida) debe estar dentro del rango configurado (ej. CUZ 7-10 noches, LIM 3-4 noches)
+   - **Conexiones**: opcionalmente, máximo de horas de espera entre tramos
+
+3. **Scoring**: cada combo válido recibe un puntaje 0-100 (promedio ponderado):
+
+| Variable | Peso | Qué mide |
+|---|---|---|
+| **Precio** | 40% | Cercanía al precio mínimo posible (0 si supera `maxPrice`, 100 si gratis) |
+| **Horarios** | 25% | Preferencia por horarios diurnos razonables |
+| **Escalas** | 15% | Penalización por cantidad de escalas |
+| **Aerolínea** | 10% | Bonus si está en `airlinePreferred`, penalización si es low-cost |
+| **Flexibilidad** | 10% | Bonus para aerolíneas con mejor política de cambios |
+
+4. **Mejor combo**: se elige el combo con mayor score. Si su costo total (precio × pasajeros por tramo + equipaje) está por debajo de `maxPrice`, genera una alerta.
+
+> Para 3 tramos × ~10 fechas = ~1000 permutaciones, la fuerza bruta es instantánea (~1ms). No se requiere programación lineal ni heurísticas.
+
+---
+
 ## Precios: cómo se obtienen
 
 El scraper abre Google Flights con la ruta, fecha y cantidad de pasajeros configurados. Hace click en la solapa **Cheapest**, espera a que Google termine de cargar los resultados (detecta la desaparición del indicador "Finding the cheapest booking options..."), y recién ahí extrae los precios.
